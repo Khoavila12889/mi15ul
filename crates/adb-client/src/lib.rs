@@ -3,7 +3,7 @@
 pub mod adb;
 mod app_storage;
 pub mod apk;
-mod apps;
+pub mod apps;
 mod background;
 mod device;
 mod device_list;

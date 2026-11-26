@@ -549,6 +549,429 @@ pub const DEBLOAT_PACKAGES: &[DebloatPreset] = &[
         description: "Trợ lý AI trả lời cuộc gọi tự động bằng tiếng Trung.",
         default_selected: true,
     },
+    // --- Quảng cáo & Telemetry sâu ---
+    DebloatPreset {
+        package: "com.xiaomi.security.onetrack",
+        name: "OneTrack Telemetry",
+        category: "Quảng cáo & Theo dõi",
+        risk: "An toàn",
+        description: "Dịch vụ theo dõi hành vi hệ thống và gửi sự kiện đo lường (OneTrack).",
+        default_selected: true,
+    },
+    DebloatPreset {
+        package: "com.miui.misightservice",
+        name: "MiSight Service",
+        category: "Quảng cáo & Theo dõi",
+        risk: "An toàn",
+        description: "Dịch vụ thu thập chẩn đoán nền và gửi báo cáo lỗi tự động.",
+        default_selected: true,
+    },
+    DebloatPreset {
+        package: "com.miui.uireporter",
+        name: "MIUI UI Reporter",
+        category: "Quảng cáo & Theo dõi",
+        risk: "An toàn",
+        description: "Dịch vụ báo cáo giao diện và phản hồi nội địa MIUI/HyperOS.",
+        default_selected: true,
+    },
+    DebloatPreset {
+        package: "com.miui.wmsvc",
+        name: "WM Service",
+        category: "Quảng cáo & Theo dõi",
+        risk: "An toàn",
+        description: "Dịch vụ chẩn đoán nền của ROM nội địa Trung Quốc.",
+        default_selected: true,
+    },
+    // --- App rác & Cài sẵn Trung Quốc ---
+    DebloatPreset {
+        package: "com.eg.android.AlipayGphone",
+        name: "Alipay (Cài sẵn CN)",
+        category: "App rác Trung Quốc",
+        risk: "An toàn",
+        description: "Ứng dụng ví điện tử Alipay cài sẵn trên ROM nội địa Trung Quốc.",
+        default_selected: true,
+    },
+    DebloatPreset {
+        package: "com.Qunar",
+        name: "Qunar Travel (Cài sẵn CN)",
+        category: "App rác Trung Quốc",
+        risk: "An toàn",
+        description: "Ứng dụng đặt vé du lịch Qunar cài sẵn trên ROM Trung Quốc.",
+        default_selected: true,
+    },
+    DebloatPreset {
+        package: "com.ss.android.ugc.aweme",
+        name: "Douyin (TikTok Trung Quốc)",
+        category: "App rác Trung Quốc",
+        risk: "An toàn",
+        description: "Ứng dụng video ngắn Douyin (TikTok phiên bản nội địa Trung Quốc).",
+        default_selected: true,
+    },
+    DebloatPreset {
+        package: "com.ss.android.article.news",
+        name: "Toutiao (Tin tức Trung Quốc)",
+        category: "App rác Trung Quốc",
+        risk: "An toàn",
+        description: "Ứng dụng đọc tin tức Toutiao cài sẵn trên ROM nội địa Trung Quốc.",
+        default_selected: true,
+    },
+    DebloatPreset {
+        package: "cn.wps.moffice_eng.xiaomi.lite",
+        name: "WPS Office for Xiaomi",
+        category: "App rác Trung Quốc",
+        risk: "An toàn",
+        description: "Bản WPS Office tích hợp sẵn của Xiaomi (chứa giao diện và quảng cáo CN).",
+        default_selected: true,
+    },
+    DebloatPreset {
+        package: "com.duokan.reader",
+        name: "Mi Reader (Duokan)",
+        category: "App rác Trung Quốc",
+        risk: "An toàn",
+        description: "Ứng dụng đọc sách điện tử Duokan cài sẵn tiếng Trung.",
+        default_selected: true,
+    },
+    DebloatPreset {
+        package: "com.mfashiongallery.emag",
+        name: "Màn hình khóa tạp chí (Wallpaper Carousel)",
+        category: "App rác Trung Quốc",
+        risk: "An toàn",
+        description: "Tự tải hình nền tạp chí và hiển thị tin/quảng cáo trên màn hình khóa.",
+        default_selected: true,
+    },
+    DebloatPreset {
+        package: "com.android.browser",
+        name: "Mi Browser (China)",
+        category: "App rác Trung Quốc",
+        risk: "An toàn",
+        description: "Trình duyệt mặc định Xiaomi kèm bảng tin và thông báo nội địa Trung Quốc.",
+        default_selected: true,
+    },
+    DebloatPreset {
+        package: "com.android.quicksearchbox",
+        name: "Thanh tìm kiếm hệ thống (XiaoAI Search)",
+        category: "App rác Trung Quốc",
+        risk: "An toàn",
+        description: "Hộp tìm kiếm nội địa Trung Quốc kèm gợi ý tin tức và quảng cáo.",
+        default_selected: true,
+    },
+    DebloatPreset {
+        package: "com.miui.greenguard",
+        name: "Family Guard (Quản lý trẻ em CN)",
+        category: "App rác Trung Quốc",
+        risk: "An toàn",
+        description: "Tính năng giám sát thiết bị trẻ em nội địa Trung Quốc.",
+        default_selected: true,
+    },
+    DebloatPreset {
+        package: "com.miui.thirdappassistant",
+        name: "Third App Assistant",
+        category: "App rác Trung Quốc",
+        risk: "An toàn",
+        description: "Trợ lý can thiệp ứng dụng bên thứ 3 của ROM nội địa.",
+        default_selected: true,
+    },
+    DebloatPreset {
+        package: "com.miui.phrase",
+        name: "MIUI Phrase (Cụm từ thường dùng)",
+        category: "App rác Trung Quốc",
+        risk: "An toàn",
+        description: "Kho cụm từ gõ nhanh tiếng Trung tích hợp hệ thống.",
+        default_selected: true,
+    },
+    DebloatPreset {
+        package: "com.miui.vpnsdkmanager",
+        name: "Xiaomi VPN SDK Manager",
+        category: "App rác Trung Quốc",
+        risk: "An toàn",
+        description: "Trình quản lý SDK VPN nội địa Trung Quốc.",
+        default_selected: true,
+    },
+    DebloatPreset {
+        package: "com.xiaomi.barrage",
+        name: "Danmaku / Barrage Notification",
+        category: "App rác Trung Quốc",
+        risk: "An toàn",
+        description: "Hiển thị thông báo chạy chữ ngang màn hình kiểu nội địa Trung Quốc.",
+        default_selected: true,
+    },
+    DebloatPreset {
+        package: "com.xiaomi.macro",
+        name: "Xiaomi Macro (Tự động hóa CN)",
+        category: "App rác Trung Quốc",
+        risk: "An toàn",
+        description: "Dịch vụ chạy kịch bản macro nội địa Trung Quốc.",
+        default_selected: true,
+    },
+    // --- Bàn phím Trung Quốc cài sẵn ---
+    DebloatPreset {
+        package: "com.baidu.input_mi",
+        name: "Baidu IME for Xiaomi",
+        category: "Bàn phím Trung Quốc",
+        risk: "An toàn",
+        description: "Bàn phím Baidu cài sẵn (tự bảo vệ nếu đang đặt làm bàn phím mặc định).",
+        default_selected: true,
+    },
+    DebloatPreset {
+        package: "com.iflytek.inputmethod.miui",
+        name: "iFlytek IME for Xiaomi",
+        category: "Bàn phím Trung Quốc",
+        risk: "An toàn",
+        description: "Bàn phím iFlytek cài sẵn (tự bảo vệ nếu đang đặt làm bàn phím mặc định).",
+        default_selected: true,
+    },
+    DebloatPreset {
+        package: "com.sohu.inputmethod.sogou.xiaomi",
+        name: "Sogou IME for Xiaomi",
+        category: "Bàn phím Trung Quốc",
+        risk: "An toàn",
+        description: "Bàn phím Sogou cài sẵn (tự bảo vệ nếu đang đặt làm bàn phím mặc định).",
+        default_selected: true,
+    },
+    // --- Trợ lý ảo & AI Trung Quốc ---
+    DebloatPreset {
+        package: "com.xiaomi.aiasst.vision",
+        name: "XiaoAI Vision (Nhận diện AI CN)",
+        category: "Trợ lý & AI Trung Quốc",
+        risk: "An toàn",
+        description: "Dịch vụ quét màn hình và nhận diện hình ảnh AI nội địa Trung Quốc.",
+        default_selected: true,
+    },
+    DebloatPreset {
+        package: "com.xiaomi.mibrain.speech",
+        name: "Mi Brain Speech",
+        category: "Trợ lý & AI Trung Quốc",
+        risk: "An toàn",
+        description: "Dịch vụ nhận dạng & tổng hợp giọng nói tiếng Trung của Xiaomi.",
+        default_selected: true,
+    },
+    DebloatPreset {
+        package: "com.miui.voiceassistoverlay",
+        name: "XiaoAI Overlay",
+        category: "Trợ lý & AI Trung Quốc",
+        risk: "An toàn",
+        description: "Lớp phủ giao diện nổi của trợ lý XiaoAI tiếng Trung.",
+        default_selected: true,
+    },
+    DebloatPreset {
+        package: "com.miui.voicetrigger",
+        name: "XiaoAI Voice Wakeup",
+        category: "Trợ lý & AI Trung Quốc",
+        risk: "An toàn",
+        description: "Lắng nghe từ khóa đánh thức trợ lý giọng nói XiaoAI.",
+        default_selected: true,
+    },
+    DebloatPreset {
+        package: "com.miui.audiomonitor",
+        name: "XiaoAI Audio Monitor",
+        category: "Trợ lý & AI Trung Quốc",
+        risk: "An toàn",
+        description: "Giám sát luồng âm thanh phục vụ đánh thức giọng nói XiaoAI.",
+        default_selected: true,
+    },
+    DebloatPreset {
+        package: "com.miui.contentcatcher",
+        name: "MIUI Content Catcher",
+        category: "Trợ lý & AI Trung Quốc",
+        risk: "An toàn",
+        description: "Bắt nội dung trên màn hình gửi về trợ lý AI nội địa Trung Quốc.",
+        default_selected: true,
+    },
+    DebloatPreset {
+        package: "com.xiaomi.aicr",
+        name: "Xiaomi AICR",
+        category: "Trợ lý & AI Trung Quốc",
+        risk: "An toàn",
+        description: "Dịch vụ gợi ý ngữ cảnh AI chạy nền nội địa Trung Quốc.",
+        default_selected: true,
+    },
+    DebloatPreset {
+        package: "com.xiaomi.aireco",
+        name: "Xiaomi AI Reco",
+        category: "Trợ lý & AI Trung Quốc",
+        risk: "An toàn",
+        description: "Dịch vụ đề xuất nội dung thông minh chạy nền nội địa Trung Quốc.",
+        default_selected: true,
+    },
+    // --- Game, Ví & Thanh toán CN ---
+    DebloatPreset {
+        package: "com.xiaomi.gamecenter.sdk.service",
+        name: "Mi Game Center SDK Service",
+        category: "Giải trí & Tin tức TQ",
+        risk: "An toàn",
+        description: "Dịch vụ SDK tài khoản game nội địa của Xiaomi Game Center.",
+        default_selected: true,
+    },
+    DebloatPreset {
+        package: "com.miui.nextpay",
+        name: "NextPay (Thanh toán CN)",
+        category: "Ví & Mua sắm TQ",
+        risk: "An toàn",
+        description: "Dịch vụ thanh toán điện tử nội địa Trung Quốc.",
+        default_selected: true,
+    },
+    DebloatPreset {
+        package: "com.miui.tsmclient",
+        name: "TSM Client (NFC Thẻ xe/Ngân hàng CN)",
+        category: "Ví & Mua sắm TQ",
+        risk: "An toàn",
+        description: "Quản lý thẻ giao thông/thanh toán NFC nội địa Trung Quốc.",
+        default_selected: true,
+    },
+    DebloatPreset {
+        package: "com.unionpay.tsmservice.mi",
+        name: "UnionPay TSM Service",
+        category: "Ví & Mua sắm TQ",
+        risk: "An toàn",
+        description: "Dịch vụ bảo mật thẻ UnionPay trên máy Xiaomi Trung Quốc.",
+        default_selected: true,
+    },
+    // --- Tiện ích & Dịch vụ sâu (Cân nhắc) ---
+    DebloatPreset {
+        package: "com.xiaomi.smarthome",
+        name: "Mi Home (Nhà thông minh)",
+        category: "Tiện ích Xiaomi",
+        risk: "Cân nhắc",
+        description: "Ứng dụng điều khiển nhà thông minh Xiaomi; giữ lại nếu dùng thiết bị Mi Home.",
+        default_selected: false,
+    },
+    DebloatPreset {
+        package: "com.mi.health",
+        name: "Mi Fitness (Sức khỏe)",
+        category: "Tiện ích Xiaomi",
+        risk: "Cân nhắc",
+        description: "Ứng dụng theo dõi sức khỏe & vòng đeo tay Mi Band / Xiaomi Watch.",
+        default_selected: false,
+    },
+    DebloatPreset {
+        package: "com.miui.huanji",
+        name: "Mi Mover (Chuyển dữ liệu)",
+        category: "Tiện ích Xiaomi",
+        risk: "Cân nhắc",
+        description: "Công cụ chuyển dữ liệu từ máy cũ sang máy Xiaomi.",
+        default_selected: false,
+    },
+    DebloatPreset {
+        package: "com.xiaomi.scanner",
+        name: "Máy quét QR Xiaomi",
+        category: "Tiện ích Xiaomi",
+        risk: "Cân nhắc",
+        description: "Ứng dụng quét mã QR / tài liệu mặc định của Xiaomi.",
+        default_selected: false,
+    },
+    DebloatPreset {
+        package: "com.miui.compass",
+        name: "La bàn MIUI",
+        category: "Tiện ích Xiaomi",
+        risk: "Cân nhắc",
+        description: "Ứng dụng la bàn mặc định của Xiaomi.",
+        default_selected: false,
+    },
+    DebloatPreset {
+        package: "com.duokan.phone.remotecontroller",
+        name: "Mi Remote (Điều khiển hồng ngoại)",
+        category: "Tiện ích Xiaomi",
+        risk: "Cân nhắc",
+        description: "Ứng dụng điều khiển TV/điều hòa qua mắt hồng ngoại.",
+        default_selected: false,
+    },
+    DebloatPreset {
+        package: "com.miui.fm",
+        name: "Đài FM",
+        category: "Tiện ích Xiaomi",
+        risk: "Cân nhắc",
+        description: "Ứng dụng nghe đài FM mặc định.",
+        default_selected: false,
+    },
+    DebloatPreset {
+        package: "com.miui.cleanmaster",
+        name: "Dọn rác MIUI (Cleaner)",
+        category: "Tiện ích Xiaomi",
+        risk: "Cân nhắc",
+        description: "Trình dọn rác bộ nhớ MIUI (hay hiện quảng cáo CN khi dọn xong).",
+        default_selected: false,
+    },
+    DebloatPreset {
+        package: "com.miui.touchassistant",
+        name: "Quick Ball (Phím ảo trợ năng)",
+        category: "Tiện ích Xiaomi",
+        risk: "Cân nhắc",
+        description: "Phím tròn nổi điều hướng nhanh của MIUI/HyperOS.",
+        default_selected: false,
+    },
+    DebloatPreset {
+        package: "com.miui.virtualsim",
+        name: "SIM ảo / Global Roaming",
+        category: "Tiện ích Xiaomi",
+        risk: "Cân nhắc",
+        description: "Dịch vụ mua gói eSIM/SIM dữ liệu du lịch của Xiaomi.",
+        default_selected: false,
+    },
+    DebloatPreset {
+        package: "com.miui.vsimcore",
+        name: "Lõi SIM ảo (vSim Core)",
+        category: "Tiện ích Xiaomi",
+        risk: "Cân nhắc",
+        description: "Dịch vụ lõi đi kèm Global Roaming / Virtual SIM.",
+        default_selected: false,
+    },
+    DebloatPreset {
+        package: "com.xiaomi.mirror",
+        name: "Xiaomi Mirror (Chiếu lên PC/Tablet)",
+        category: "Hệ thống phụ trợ",
+        risk: "Cân nhắc",
+        description: "Kết nối truyền màn hình liên thiết bị trong hệ sinh thái Xiaomi HyperConnect.",
+        default_selected: false,
+    },
+    DebloatPreset {
+        package: "com.xiaomi.mis",
+        name: "Xiaomi MIS (Liên kết thiết bị)",
+        category: "Hệ thống phụ trợ",
+        risk: "Cân nhắc",
+        description: "Dịch vụ kết nối đa thiết bị HyperOS / Xiaomi Interconnectivity.",
+        default_selected: false,
+    },
+    DebloatPreset {
+        package: "com.milink.service",
+        name: "MiLink Service (Truyền phát không dây)",
+        category: "Hệ thống phụ trợ",
+        risk: "Cân nhắc",
+        description: "Dịch vụ phản chiếu âm thanh/màn hình DLNA/Miracast nội địa của Xiaomi.",
+        default_selected: false,
+    },
+    DebloatPreset {
+        package: "com.miui.cloudservice",
+        name: "Xiaomi Cloud (Đám mây CN)",
+        category: "Hệ thống phụ trợ",
+        risk: "Cân nhắc",
+        description: "Đồng bộ đám mây Xiaomi Cloud; giữ lại nếu đang dùng Mi Cloud.",
+        default_selected: false,
+    },
+    DebloatPreset {
+        package: "com.miui.cloudbackup",
+        name: "Sao lưu Xiaomi Cloud",
+        category: "Hệ thống phụ trợ",
+        risk: "Cân nhắc",
+        description: "Sao lưu cài đặt & dữ liệu lên Xiaomi Cloud.",
+        default_selected: false,
+    },
+    DebloatPreset {
+        package: "com.miui.micloudsync",
+        name: "Đồng bộ Xiaomi Cloud",
+        category: "Hệ thống phụ trợ",
+        risk: "Cân nhắc",
+        description: "Đồng bộ danh bạ/tin nhắn/ghi chú lên Xiaomi Cloud.",
+        default_selected: false,
+    },
+    // --- Gói nhạy cảm ---
+    DebloatPreset {
+        package: "com.xiaomi.finddevice",
+        name: "Find Device (Tìm thiết bị)",
+        category: "Hệ thống nhạy cảm",
+        risk: "Cảnh báo",
+        description: "Chỉ tắt/đóng băng sau khi đã đăng xuất Mi Account và tắt Tìm thiết bị. Hệ thống tự chặn gỡ hẳn để tránh bootloop HyperOS!",
+        default_selected: false,
+    },
 ];
 
 // ---------------------------------------------------------------------------
@@ -599,6 +1022,7 @@ pub struct LocaleStatus {
 pub enum DebloatStatus {
     Installed,
     DisabledUser0,
+    SuspendedUser0,
     RemovedUser0,
     NotPresent,
 }
@@ -608,6 +1032,7 @@ impl DebloatStatus {
         match self {
             DebloatStatus::Installed => "Đang cài",
             DebloatStatus::DisabledUser0 => "Đã tắt (User 0)",
+            DebloatStatus::SuspendedUser0 => "Đã đóng băng",
             DebloatStatus::RemovedUser0 => "Đã gỡ (User 0)",
             DebloatStatus::NotPresent => "Không có trên ROM",
         }
@@ -624,7 +1049,40 @@ pub struct DebloatState {
     pub status: DebloatStatus,
     pub installed: bool,
     pub restorable: bool,
+    pub protected_reason: Option<String>,
     pub selected: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum DeepRemovalMode {
+    #[default]
+    AutoDeep,
+    FreezeOnly,
+}
+
+impl DeepRemovalMode {
+    pub fn label(self) -> &'static str {
+        match self {
+            DeepRemovalMode::AutoDeep => "Gỡ sâu tự động (Gỡ → Tắt → Đóng băng)",
+            DeepRemovalMode::FreezeOnly => "Chỉ Tắt / Đóng băng (An toàn tối đa)",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct DebloatReport {
+    pub uninstalled: usize,
+    pub disabled: usize,
+    pub frozen: usize,
+    pub already_removed: usize,
+    pub skipped_protected: usize,
+    pub failed: usize,
+}
+
+impl DebloatReport {
+    pub fn ok_total(&self) -> usize {
+        self.uninstalled + self.disabled + self.frozen
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -2159,8 +2617,123 @@ pub fn deploy_mtz_via_adb(
 }
 
 // ---------------------------------------------------------------------------
-// Feature 3: Safe Debloat (User 0)
+// Feature 3: Safe & Deep Debloat (User 0 + Global Preloads + Disable + Suspend)
 // ---------------------------------------------------------------------------
+
+const CORE_PROTECTED_PACKAGES: &[&str] = &[
+    "android",
+    "com.android.systemui",
+    "com.android.settings",
+    "com.android.phone",
+    "com.android.shell",
+    "com.miui.securitycenter",
+    "com.miui.rom",
+    "com.miui.core",
+    "com.miui.system",
+    "com.lbe.security.miui",
+    "com.android.packageinstaller",
+    "com.miui.packageinstaller",
+    "com.android.permissioncontroller",
+    "com.android.providers.settings",
+    "com.android.providers.telephony",
+    "com.android.providers.media",
+    "com.android.providers.media.module",
+    "com.android.keychain",
+    "com.android.webview",
+    "com.google.android.webview",
+];
+
+pub fn is_core_protected_package(pkg: &str) -> bool {
+    CORE_PROTECTED_PACKAGES.contains(&pkg.trim())
+}
+
+pub fn parse_default_ime_package(raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() || trimmed == "null" {
+        return None;
+    }
+    let pkg = trimmed.split('/').next()?.trim();
+    if is_valid_package(pkg) {
+        Some(pkg.to_string())
+    } else {
+        None
+    }
+}
+
+pub fn parse_default_launcher_package(raw: &str) -> Option<String> {
+    for line in raw.lines() {
+        let trimmed = line.trim();
+        if let Some((pkg_part, _rest)) = trimmed.split_once('/') {
+            let pkg = pkg_part.trim();
+            if is_valid_package(pkg) {
+                return Some(pkg.to_string());
+            }
+        }
+    }
+    None
+}
+
+pub fn parse_suspended_packages_from_dumpsys(raw: &str) -> HashSet<String> {
+    let mut suspended = HashSet::new();
+    let mut current_pkg: Option<String> = None;
+
+    for line in raw.lines() {
+        let trimmed = line.trim();
+        if let Some(rest) = trimmed.strip_prefix("Package [") {
+            if let Some(pkg_end) = rest.find(']') {
+                let pkg = rest[..pkg_end].trim();
+                current_pkg = is_valid_package(pkg).then(|| pkg.to_string());
+            }
+            continue;
+        }
+        if trimmed.contains("suspended=true") {
+            if let Some(pkg) = current_pkg.take() {
+                suspended.insert(pkg);
+            }
+        }
+    }
+    suspended
+}
+
+fn query_active_ime_package(adb: &str, serial: &str) -> Option<String> {
+    let raw = get_setting(adb, serial, "secure", "default_input_method");
+    parse_default_ime_package(&raw)
+}
+
+fn query_active_launcher_package(adb: &str, serial: &str) -> Option<String> {
+    let out = run_adb_shell(
+        adb,
+        serial,
+        "cmd package resolve-activity --brief -c android.intent.category.HOME -a android.intent.action.MAIN",
+        Duration::from_secs(10),
+    )
+    .ok()
+    .map(|(_, o)| o)
+    .unwrap_or_default();
+    parse_default_launcher_package(&out)
+}
+
+fn query_suspended_packages(adb: &str, serial: &str) -> HashSet<String> {
+    if let Ok((true, out)) = run_adb_shell(
+        adb,
+        serial,
+        "dumpsys package packages | grep -E '^  Package \\[|suspended=true'",
+        Duration::from_secs(15),
+    ) {
+        if out.contains("Package [") {
+            return parse_suspended_packages_from_dumpsys(&out);
+        }
+    }
+    if let Ok((_, out)) = run_adb_shell(
+        adb,
+        serial,
+        "dumpsys package | grep -E '^  Package \\[|suspended=true'",
+        Duration::from_secs(15),
+    ) {
+        return parse_suspended_packages_from_dumpsys(&out);
+    }
+    HashSet::new()
+}
 
 pub fn scan_debloat_packages(adb_bin: Option<&str>, serial: &str) -> Result<Vec<DebloatState>, String> {
     let adb = resolve_adb_verified(adb_bin);
@@ -2170,15 +2743,24 @@ pub fn scan_debloat_packages(adb_bin: Option<&str>, serial: &str) -> Result<Vec<
         .unwrap_or_default();
     let all_with_uninstalled = list_packages_cmd(&adb, serial, "pm list packages -u")
         .unwrap_or_else(|_| enabled_user0.clone());
+    let suspended_user0 = query_suspended_packages(&adb, serial);
+    let active_ime = query_active_ime_package(&adb, serial);
+    let active_launcher = query_active_launcher_package(&adb, serial);
 
     Ok(DEBLOAT_PACKAGES
         .iter()
         .map(|item| {
-            let is_enabled = enabled_user0.contains(item.package);
-            let is_disabled = !is_enabled && disabled_user0.contains(item.package);
-            let exists_uninstalled = !is_enabled && !is_disabled && all_with_uninstalled.contains(item.package);
+            let is_suspended = suspended_user0.contains(item.package);
+            let is_enabled = !is_suspended && enabled_user0.contains(item.package);
+            let is_disabled = !is_suspended && !is_enabled && disabled_user0.contains(item.package);
+            let exists_uninstalled = !is_suspended
+                && !is_enabled
+                && !is_disabled
+                && all_with_uninstalled.contains(item.package);
 
-            let status = if is_enabled {
+            let status = if is_suspended {
+                DebloatStatus::SuspendedUser0
+            } else if is_enabled {
                 DebloatStatus::Installed
             } else if is_disabled {
                 DebloatStatus::DisabledUser0
@@ -2187,6 +2769,17 @@ pub fn scan_debloat_packages(adb_bin: Option<&str>, serial: &str) -> Result<Vec<
             } else {
                 DebloatStatus::NotPresent
             };
+
+            let protected_reason = if is_core_protected_package(item.package) {
+                Some("Gói lõi hệ thống".to_string())
+            } else if active_ime.as_deref() == Some(item.package) {
+                Some("Bàn phím đang dùng".to_string())
+            } else if active_launcher.as_deref() == Some(item.package) {
+                Some("Màn hình chính đang dùng".to_string())
+            } else {
+                None
+            };
+
             DebloatState {
                 package: item.package.to_string(),
                 name: item.name.to_string(),
@@ -2195,32 +2788,171 @@ pub fn scan_debloat_packages(adb_bin: Option<&str>, serial: &str) -> Result<Vec<
                 description: item.description,
                 status,
                 installed: is_enabled,
-                restorable: is_disabled || exists_uninstalled,
-                selected: is_enabled && item.default_selected,
+                restorable: is_suspended || is_disabled || exists_uninstalled,
+                selected: is_enabled && item.default_selected && protected_reason.is_none(),
+                protected_reason,
             }
         })
         .collect())
+}
+
+fn output_is_disabled(out: &str) -> bool {
+    let low = out.to_ascii_lowercase();
+    (low.contains("disabled") || low.contains("new state"))
+        && !low.contains("exception")
+        && !low.contains("error")
+        && !low.contains("failure")
+}
+
+fn output_is_frozen(out: &str) -> bool {
+    let low = out.to_ascii_lowercase();
+    (low.contains("suspended")
+        || low.contains("new suspended state")
+        || low.contains("true")
+        || low.contains("hidden"))
+        && !low.contains("exception")
+        && !low.contains("failure")
+        && !low.contains("error")
+}
+
+fn apply_background_lockdown(adb: &str, serial: &str, pkg: &str) {
+    let cmd = format!(
+        "am force-stop {pkg} >/dev/null 2>&1 || true; \
+         cmd appops set {pkg} RUN_IN_BACKGROUND ignore >/dev/null 2>&1 || true; \
+         cmd appops set {pkg} RUN_ANY_IN_BACKGROUND ignore >/dev/null 2>&1 || true"
+    );
+    let _ = run_adb_shell(adb, serial, &cmd, Duration::from_secs(10));
+}
+
+fn try_disable_or_freeze(
+    adb: &str,
+    serial: &str,
+    pkg: &str,
+    prev_err: &str,
+    hist: &mut HashSet<String>,
+    report: &mut DebloatReport,
+    on_log: &mut impl FnMut(String),
+) {
+    // Tier 4: pm disable-user --user 0 (or pm disable --user 0)
+    let mut dis_res = run_adb_shell(
+        adb,
+        serial,
+        &format!("pm disable-user --user 0 {pkg}"),
+        Duration::from_secs(20),
+    );
+    let dis_ok = matches!(&dis_res, Ok((true, out)) if output_is_disabled(out));
+    if !dis_ok {
+        dis_res = run_adb_shell(
+            adb,
+            serial,
+            &format!("pm disable --user 0 {pkg}"),
+            Duration::from_secs(20),
+        );
+    }
+    if matches!(&dis_res, Ok((true, out)) if output_is_disabled(out)) {
+        apply_background_lockdown(adb, serial, pkg);
+        report.disabled += 1;
+        hist.insert(pkg.to_string());
+        on_log(format!("[TẮT OK] {pkg} (đã vô hiệu hóa & chặn chạy nền User 0)"));
+        return;
+    }
+    let dis_err = match &dis_res {
+        Ok((_, out)) => out.clone(),
+        Err(e) => e.clone(),
+    };
+
+    // Tier 5: pm suspend --user 0 (fallback pm hide --user 0)
+    let mut frz_res = run_adb_shell(
+        adb,
+        serial,
+        &format!("pm suspend --user 0 {pkg}"),
+        Duration::from_secs(20),
+    );
+    let frz_ok = matches!(&frz_res, Ok((true, out)) if output_is_frozen(out));
+    if !frz_ok {
+        frz_res = run_adb_shell(
+            adb,
+            serial,
+            &format!("pm hide --user 0 {pkg}"),
+            Duration::from_secs(20),
+        );
+    }
+    match frz_res {
+        Ok((true, ref out)) if output_is_frozen(out) => {
+            apply_background_lockdown(adb, serial, pkg);
+            report.frozen += 1;
+            hist.insert(pkg.to_string());
+            on_log(format!("[ĐÓNG BĂNG OK] {pkg} (đã suspend/ẩn & chặn chạy nền)"));
+        }
+        Ok((_, out)) => {
+            report.failed += 1;
+            on_log(format!(
+                "[THẤT BẠI] {pkg}: gỡ ({prev_err}) | tắt ({dis_err}) | đóng băng ({out})"
+            ));
+        }
+        Err(e) => {
+            report.failed += 1;
+            on_log(format!(
+                "[LỖI] {pkg}: gỡ ({prev_err}) | tắt ({dis_err}) | đóng băng ({e})"
+            ));
+        }
+    }
 }
 
 pub fn uninstall_packages(
     adb_bin: Option<&str>,
     serial: &str,
     packages: &[String],
+    mode: DeepRemovalMode,
     backups_dir: &Path,
     mut on_log: impl FnMut(String),
-) -> (usize, usize) {
+) -> DebloatReport {
     let adb = resolve_adb_verified(adb_bin);
     let mut backup = load_backup(backups_dir, serial);
     let mut hist: HashSet<String> = backup.uninstalled_packages.iter().cloned().collect();
-    let (mut ok_cnt, mut fail_cnt) = (0usize, 0usize);
+    let mut report = DebloatReport::default();
+
+    let active_ime = query_active_ime_package(&adb, serial);
+    let active_launcher = query_active_launcher_package(&adb, serial);
 
     for raw in packages {
         let pkg = raw.trim();
         if !is_valid_package(pkg) {
             on_log(format!("Bỏ qua package không hợp lệ: {pkg}"));
-            fail_cnt += 1;
+            report.failed += 1;
             continue;
         }
+        if is_core_protected_package(pkg) {
+            report.skipped_protected += 1;
+            on_log(format!("[BỎ QUA BẢO VỆ] {pkg} là gói lõi hệ thống chống bootloop."));
+            continue;
+        }
+        if active_ime.as_deref() == Some(pkg) {
+            report.skipped_protected += 1;
+            on_log(format!("[BỎ QUA BẢO VỆ] {pkg} đang là bàn phím mặc định."));
+            continue;
+        }
+        if active_launcher.as_deref() == Some(pkg) {
+            report.skipped_protected += 1;
+            on_log(format!("[BỎ QUA BẢO VỆ] {pkg} đang là màn hình chính (Launcher)."));
+            continue;
+        }
+
+        // HyperOS anti-bootloop guard: Find Device must never be hard-uninstalled.
+        let effective_mode = if pkg == "com.xiaomi.finddevice" {
+            on_log(format!(
+                "[AN TOÀN CHỐNG BOOTLOOP] {pkg}: ép dùng chế độ Chỉ Tắt / Đóng băng thay cho gỡ hẳn."
+            ));
+            DeepRemovalMode::FreezeOnly
+        } else {
+            mode
+        };
+
+        if effective_mode == DeepRemovalMode::FreezeOnly {
+            try_disable_or_freeze(&adb, serial, pkg, "chế độ chỉ tắt/đóng băng", &mut hist, &mut report, &mut on_log);
+            continue;
+        }
+
         // Tier 1: pm uninstall -k --user 0
         let r1 = run_adb_shell(
             &adb,
@@ -2229,22 +2961,23 @@ pub fn uninstall_packages(
             Duration::from_secs(20),
         );
         if matches!(&r1, Ok((true, out)) if out.contains("Success")) {
-            ok_cnt += 1;
+            report.uninstalled += 1;
             hist.insert(pkg.to_string());
             on_log(format!("[GỠ OK] {pkg}"));
             continue;
         }
-        let first_err = match &r1 {
+        let err1 = match &r1 {
             Ok((_, out)) => out.clone(),
             Err(e) => e.clone(),
         };
-        if first_err.contains("not installed for 0") {
+        if err1.contains("not installed for 0") {
+            report.already_removed += 1;
             hist.insert(pkg.to_string());
             on_log(format!("[ĐÃ GỠ SẴN] {pkg} (không còn cài cho User 0)"));
             continue;
         }
 
-        // Tier 2: pm uninstall --user 0 (without -k, works for some /data/app preloads)
+        // Tier 2: pm uninstall --user 0
         let r2 = run_adb_shell(
             &adb,
             serial,
@@ -2252,50 +2985,75 @@ pub fn uninstall_packages(
             Duration::from_secs(20),
         );
         if matches!(&r2, Ok((true, out)) if out.contains("Success")) {
-            ok_cnt += 1;
+            report.uninstalled += 1;
             hist.insert(pkg.to_string());
             on_log(format!("[GỠ OK] {pkg}"));
             continue;
         }
-        let second_err = match &r2 {
+        let err2 = match &r2 {
             Ok((_, out)) => out.clone(),
             Err(e) => e.clone(),
         };
-        if second_err.contains("not installed for 0") {
+        if err2.contains("not installed for 0") {
+            report.already_removed += 1;
             hist.insert(pkg.to_string());
             on_log(format!("[ĐÃ GỠ SẴN] {pkg} (không còn cài cho User 0)"));
             continue;
         }
 
-        // Tier 3: pm disable-user --user 0 (fallback when HyperOS blocks uninstall)
-        let r3 = run_adb_shell(
+        // Tier 3: pm uninstall-system-updates <pkg> + retry user 0 -> global pm uninstall <pkg>
+        let _ = run_adb_shell(
             &adb,
             serial,
-            &format!("pm disable-user --user 0 {pkg}"),
+            &format!("pm uninstall-system-updates {pkg}"),
             Duration::from_secs(20),
         );
-        match r3 {
-            Ok((true, out)) if out.to_ascii_lowercase().contains("disabled") || out.to_ascii_lowercase().contains("new state") => {
-                ok_cnt += 1;
-                hist.insert(pkg.to_string());
-                on_log(format!("[VÔ HIỆU HÓA OK] {pkg} (ROM chặn gỡ, đã tắt cho User 0)"));
-            }
-            Ok((_, out)) => {
-                fail_cnt += 1;
-                on_log(format!("[THẤT BẠI] {pkg}: gỡ ({second_err}) | tắt ({out})"));
-            }
-            Err(e) => {
-                fail_cnt += 1;
-                on_log(format!("[LỖI] {pkg}: gỡ ({second_err}) | tắt ({e})"));
-            }
+        let r3a = run_adb_shell(
+            &adb,
+            serial,
+            &format!("pm uninstall -k --user 0 {pkg}"),
+            Duration::from_secs(20),
+        );
+        if matches!(&r3a, Ok((true, out)) if out.contains("Success")) {
+            report.uninstalled += 1;
+            hist.insert(pkg.to_string());
+            on_log(format!("[GỠ OK] {pkg} (sau khi gỡ bản cập nhật hệ thống)"));
+            continue;
         }
+        let r3b = run_adb_shell(
+            &adb,
+            serial,
+            &format!("pm uninstall {pkg}"),
+            Duration::from_secs(20),
+        );
+        if matches!(&r3b, Ok((true, out)) if out.contains("Success")) {
+            report.uninstalled += 1;
+            hist.insert(pkg.to_string());
+            on_log(format!("[GỠ SÂU OK] {pkg} (gói /data/app cài sẵn)"));
+            continue;
+        }
+        let err3 = match &r3b {
+            Ok((_, out)) => out.clone(),
+            Err(e) => e.clone(),
+        };
+
+        // Tier 4 & 5: Disable -> Suspend/Hide + force-stop + appops ignore
+        try_disable_or_freeze(
+            &adb,
+            serial,
+            pkg,
+            &format!("{err2} | {err3}"),
+            &mut hist,
+            &mut report,
+            &mut on_log,
+        );
     }
 
     let mut sorted: Vec<String> = hist.into_iter().collect();
     sorted.sort();
     backup.uninstalled_packages = sorted;
     save_backup(backups_dir, serial, &backup);
-    (ok_cnt, fail_cnt)
+    report
 }
 
 pub fn restore_packages(
@@ -2317,6 +3075,7 @@ pub fn restore_packages(
             fail_cnt += 1;
             continue;
         }
+        // Layer 1: install-existing
         let mut res = run_adb_shell(
             &adb,
             serial,
@@ -2333,15 +3092,54 @@ pub fn restore_packages(
             );
         }
         let installed_ok = matches!(&res, Ok((true, out)) if out.to_ascii_lowercase().contains("installed"));
+
+        // Layer 2: unhide
+        let unhide_ok = run_adb_shell(
+            &adb,
+            serial,
+            &format!("pm unhide --user 0 {pkg}"),
+            Duration::from_secs(10),
+        )
+        .map(|(ok, out)| ok && out.to_ascii_lowercase().contains("false"))
+        .unwrap_or(false);
+
+        // Layer 3: unsuspend
+        let unsuspend_ok = run_adb_shell(
+            &adb,
+            serial,
+            &format!("pm unsuspend --user 0 {pkg}"),
+            Duration::from_secs(10),
+        )
+        .map(|(ok, out)| {
+            let low = out.to_ascii_lowercase();
+            ok && (low.contains("false") || low.contains("unsuspended") || low.contains("new suspended state"))
+        })
+        .unwrap_or(false);
+
+        // Layer 4: pm enable + reset appops
         let en_res = run_adb_shell(
             &adb,
             serial,
             &format!("pm enable --user 0 {pkg}"),
             Duration::from_secs(15),
         );
-        let enabled_ok = matches!(&en_res, Ok((true, out)) if out.to_ascii_lowercase().contains("enabled") || out.to_ascii_lowercase().contains("new state"));
+        let enabled_ok = matches!(
+            &en_res,
+            Ok((true, out))
+                if out.to_ascii_lowercase().contains("enabled")
+                    || out.to_ascii_lowercase().contains("new state")
+        );
+        let _ = run_adb_shell(
+            &adb,
+            serial,
+            &format!(
+                "cmd appops set {pkg} RUN_IN_BACKGROUND default >/dev/null 2>&1 || true; \
+                 cmd appops set {pkg} RUN_ANY_IN_BACKGROUND default >/dev/null 2>&1 || true"
+            ),
+            Duration::from_secs(10),
+        );
 
-        if installed_ok || enabled_ok {
+        if installed_ok || unhide_ok || unsuspend_ok || enabled_ok {
             ok_cnt += 1;
             hist.remove(pkg);
             on_log(format!("[KHÔI PHỤC OK] {pkg}"));
@@ -2477,5 +3275,53 @@ mod tests {
         assert_eq!(subs.len(), 14);
         assert!(subs.iter().any(|s| s["resourceCode"] == "statusbar"));
         assert!(subs.iter().any(|s| s["resourceCode"] == "icons"));
+    }
+
+    #[test]
+    fn debloat_presets_have_unique_packages_and_no_core_packages() {
+        let mut seen = HashSet::new();
+        for item in DEBLOAT_PACKAGES {
+            assert!(
+                seen.insert(item.package),
+                "Duplicate package in DEBLOAT_PACKAGES: {}",
+                item.package
+            );
+            assert!(
+                !is_core_protected_package(item.package),
+                "Core package leaked into DEBLOAT_PACKAGES: {}",
+                item.package
+            );
+        }
+        assert!(DEBLOAT_PACKAGES.len() >= 70);
+    }
+
+    #[test]
+    fn parses_ime_launcher_and_suspended_packages() {
+        assert_eq!(
+            parse_default_ime_package(
+                "com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME\n"
+            ),
+            Some("com.google.android.inputmethod.latin".to_string())
+        );
+        assert_eq!(parse_default_ime_package("null"), None);
+
+        let launcher_raw = "priority=0 preferredOrder=0 match=0x108000 specificIndex=-1 isDefault=true\ncom.miui.home/.launcher.Launcher\n";
+        assert_eq!(
+            parse_default_launcher_package(launcher_raw),
+            Some("com.miui.home".to_string())
+        );
+
+        let dumpsys_raw = r#"
+  Package [com.xiaomi.finddevice] (abc):
+    User 0: ceDataInode=1 installed=true suspended=true
+  Package [com.miui.home] (def):
+    User 0: ceDataInode=2 installed=true suspended=false
+  Package [com.xiaomi.aicr] (123):
+    User 0: ceDataInode=3 installed=true suspended=true
+"#;
+        let suspended = parse_suspended_packages_from_dumpsys(dumpsys_raw);
+        assert!(suspended.contains("com.xiaomi.finddevice"));
+        assert!(suspended.contains("com.xiaomi.aicr"));
+        assert!(!suspended.contains("com.miui.home"));
     }
 }

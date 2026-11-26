@@ -4,6 +4,7 @@
 use std::collections::HashSet;
 use std::thread;
 
+use adb_client::apps::UninstallOutcome;
 use crossbeam_channel::{Receiver, unbounded};
 use eframe::egui;
 
@@ -86,10 +87,11 @@ impl PackageAction {
 }
 
 enum CleanupEvent {
+    ProtectedLoaded(String, Vec<String>),
     Done {
         action: PackageAction,
         package: String,
-        result: Result<(), String>,
+        result: Result<Option<UninstallOutcome>, String>,
     },
     Finished {
         action: PackageAction,
@@ -115,14 +117,17 @@ pub struct AppCleanup {
     search: String,
     show_system: bool,
     selected: HashSet<String>,
+    /// Active IME and launcher detected from the bound device.
+    active_protected: HashSet<String>,
+    protected_serial: Option<String>,
+    protected_rx: Option<Receiver<CleanupEvent>>,
     /// Removed during this session; hidden from the list until rescanned.
     hidden: HashSet<String>,
-    /// Successfully removed system packages, newest last. User apps cannot be
-    /// restored because their APK is deleted, so they are not listed here.
-    removed: Vec<String>,
+    /// Removed/disabled/suspended packages that can be restored in this session.
+    removed: Vec<(String, UninstallOutcome)>,
     /// Packages awaiting confirmation.
     pending: Option<Vec<String>>,
-    /// System packages in the pending batch; only these can be restored.
+    /// System packages in the pending batch; only these (plus disabled/suspended) can be restored.
     pending_system: HashSet<String>,
     status: Option<Status>,
     busy: bool,
@@ -136,6 +141,9 @@ impl Default for AppCleanup {
             search: String::new(),
             show_system: true,
             selected: HashSet::new(),
+            active_protected: HashSet::new(),
+            protected_serial: None,
+            protected_rx: None,
             hidden: HashSet::new(),
             removed: Vec::new(),
             pending: None,
@@ -159,6 +167,8 @@ impl AppCleanup {
     pub fn reset(&mut self) {
         let rx = self.rx.take();
         drop(rx);
+        let prx = self.protected_rx.take();
+        drop(prx);
         *self = Self::default();
     }
 
@@ -170,29 +180,45 @@ impl AppCleanup {
                 events.push(event);
             }
         }
+        if let Some(prx) = self.protected_rx.as_ref() {
+            while let Ok(event) = prx.try_recv() {
+                events.push(event);
+            }
+        }
         if events.is_empty() {
             return false;
         }
 
         for event in events {
             match event {
+                CleanupEvent::ProtectedLoaded(serial, pkgs) => {
+                    self.protected_rx = None;
+                    if self.protected_serial.as_deref() == Some(serial.as_str()) {
+                        for p in &pkgs {
+                            self.selected.remove(p);
+                        }
+                        self.active_protected = pkgs.into_iter().collect();
+                    }
+                }
                 CleanupEvent::Done {
                     action,
                     package,
                     result,
                 } => match result {
-                    Ok(()) => {
+                    Ok(outcome_opt) => {
                         if action == PackageAction::Uninstall {
+                            let outcome = outcome_opt.unwrap_or(UninstallOutcome::Uninstalled);
                             self.hidden.insert(package.clone());
                             self.selected.remove(&package);
-                            if self.pending_system.contains(&package)
-                                && !self.removed.contains(&package)
+                            let restorable = outcome != UninstallOutcome::Uninstalled
+                                || self.pending_system.contains(&package);
+                            if restorable && !self.removed.iter().any(|(name, _)| name == &package)
                             {
-                                self.removed.push(package);
+                                self.removed.push((package, outcome));
                             }
                         } else {
                             self.hidden.remove(&package);
-                            self.removed.retain(|name| name != &package);
+                            self.removed.retain(|(name, _)| name != &package);
                         }
                     }
                     Err(message) => {
@@ -240,6 +266,19 @@ impl AppCleanup {
     ) {
         if !self.open {
             return;
+        }
+        if let Some(s) = serial {
+            if self.protected_serial.as_deref() != Some(s) {
+                self.protected_serial = Some(s.to_string());
+                self.active_protected.clear();
+                let (tx, rx) = unbounded();
+                self.protected_rx = Some(rx);
+                let serial_owned = s.to_string();
+                thread::spawn(move || {
+                    let pkgs = adb_client::apps::query_active_protected_packages(&serial_owned);
+                    let _ = tx.send(CleanupEvent::ProtectedLoaded(serial_owned, pkgs));
+                });
+            }
         }
 
         let mut open = true;
@@ -444,7 +483,7 @@ impl AppCleanup {
                 if ui.add_enabled(can_uninstall, button).clicked() {
                     let mut packages: Vec<String> = self.selected.iter().cloned().collect();
                     packages.sort();
-                    packages.retain(|package| !is_protected(package));
+                    packages.retain(|package| !is_protected(package) && !self.active_protected.contains(package));
                     if !packages.is_empty() {
                         self.pending_system = packages
                             .iter()
@@ -493,9 +532,19 @@ impl AppCleanup {
                 .color(colors::FOOTER_TEXT),
         );
         let removed = self.removed.clone();
-        for package in removed {
+        for (package, outcome) in removed {
+            let outcome_label = match outcome {
+                UninstallOutcome::Uninstalled => i18n::t("cleanup.outcome_uninstalled"),
+                UninstallOutcome::Disabled => i18n::t("cleanup.outcome_disabled"),
+                UninstallOutcome::Suspended => i18n::t("cleanup.outcome_suspended"),
+            };
             ui.horizontal(|ui| {
                 ui.label(egui::RichText::new(&package).monospace().small());
+                ui.label(
+                    egui::RichText::new(format!("({outcome_label})"))
+                        .small()
+                        .color(colors::FOOTER_TEXT),
+                );
                 if ui
                     .add_enabled(
                         !self.busy && serial.is_some(),
@@ -616,8 +665,12 @@ impl AppCleanup {
             let mut failed = 0;
             for package in packages {
                 let result = match action {
-                    PackageAction::Uninstall => adb_client::uninstall_package(&serial, &package),
-                    PackageAction::Restore => adb_client::restore_package(&serial, &package),
+                    PackageAction::Uninstall => {
+                        adb_client::apps::uninstall_package_deep(&serial, &package).map(Some)
+                    }
+                    PackageAction::Restore => {
+                        adb_client::apps::restore_package_deep(&serial, &package).map(|()| None)
+                    }
                 }
                 .map_err(|err| i18n::adb_error_vi(&err.user_message()));
 
@@ -657,7 +710,7 @@ impl AppCleanup {
                 package: package.clone(),
                 system: storage.is_system(package),
                 size: storage.sizes.get(package).copied(),
-                protected: is_protected(package),
+                protected: is_protected(package) || self.active_protected.contains(package),
             })
             .collect();
 

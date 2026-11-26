@@ -5,8 +5,9 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use adb_client::hyperos::{
-    self, DEBLOAT_PACKAGES, DebloatState, DebloatStatus, DeviceHyperOsInfo, LocaleStatus,
-    NOTIFICATION_APPS, NotificationAppState, NotificationFixReport, StagedMtz, THEME_CATALOG,
+    self, DEBLOAT_PACKAGES, DebloatReport, DebloatState, DebloatStatus, DeepRemovalMode,
+    DeviceHyperOsInfo, LocaleStatus, NOTIFICATION_APPS, NotificationAppState, NotificationFixReport,
+    StagedMtz, THEME_CATALOG,
 };
 use crossbeam_channel::{Receiver, Sender, unbounded};
 use eframe::egui;
@@ -35,7 +36,7 @@ impl DebloatFilter {
         match self {
             DebloatFilter::All => "Tất cả",
             DebloatFilter::Installed => "Đang cài",
-            DebloatFilter::Removed => "Đã gỡ / Đã tắt",
+            DebloatFilter::Removed => "Đã gỡ / tắt / đóng băng",
         }
     }
 }
@@ -51,6 +52,10 @@ enum HyperOsEvent {
     PickedMtz(Option<PathBuf>),
     MtzDeployed(Result<StagedMtz, String>),
     DebloatScanned(String, Result<Vec<DebloatState>, String>),
+    DebloatUninstallDone {
+        report: DebloatReport,
+        rescanned: Result<Vec<DebloatState>, String>,
+    },
     DebloatDone {
         action: &'static str,
         ok: usize,
@@ -81,6 +86,10 @@ pub struct HyperOsDialog {
     debloat_items: Vec<DebloatState>,
     debloat_scanned: bool,
     debloat_filter: DebloatFilter,
+    debloat_mode: DeepRemovalMode,
+    debloat_search: String,
+    custom_debloat_pkg: String,
+    debloat_report: Option<DebloatReport>,
     confirm_debloat: bool,
 
     confirm_bank_lock: bool,
@@ -122,6 +131,7 @@ impl Default for HyperOsDialog {
                 status: DebloatStatus::NotPresent,
                 installed: false,
                 restorable: false,
+                protected_reason: None,
                 selected: d.default_selected,
             })
             .collect();
@@ -148,6 +158,10 @@ impl Default for HyperOsDialog {
             debloat_items,
             debloat_scanned: false,
             debloat_filter: DebloatFilter::All,
+            debloat_mode: DeepRemovalMode::AutoDeep,
+            debloat_search: String::new(),
+            custom_debloat_pkg: String::new(),
+            debloat_report: None,
             confirm_debloat: false,
             confirm_bank_lock: false,
             busy: false,
@@ -170,6 +184,7 @@ impl HyperOsDialog {
             self.device_info = None;
             self.noti_scanned = false;
             self.debloat_scanned = false;
+            self.debloat_report = None;
             self.confirm_debloat = false;
             self.confirm_bank_lock = false;
             self.locale_status = LocaleStatus {
@@ -351,16 +366,10 @@ impl HyperOsDialog {
                         match res {
                             Ok(rows) => {
                                 let inst = rows.iter().filter(|r| r.installed).count();
-                                let rem = rows
-                                    .iter()
-                                    .filter(|r| {
-                                        matches!(
-                                            r.status,
-                                            DebloatStatus::RemovedUser0 | DebloatStatus::DisabledUser0
-                                        )
-                                    })
-                                    .count();
-                                self.status = format!("Quét Debloat xong: {inst} đang cài, {rem} đã gỡ/tắt (User 0).");
+                                let rem = rows.iter().filter(|r| r.restorable).count();
+                                self.status = format!(
+                                    "Quét Debloat xong: {inst} đang cài, {rem} đã gỡ/tắt/đóng băng."
+                                );
                                 self.error = false;
                                 self.append_log(&self.status.clone());
                                 self.debloat_items = rows;
@@ -372,6 +381,25 @@ impl HyperOsDialog {
                                 self.append_log(&format!("Lỗi quét Debloat: {e}"));
                             }
                         }
+                    }
+                }
+                HyperOsEvent::DebloatUninstallDone { report, rescanned } => {
+                    self.busy = false;
+                    self.confirm_debloat = false;
+                    self.debloat_report = Some(report);
+                    self.status = format!(
+                        "Hoàn tất: gỡ {}, tắt {}, đóng băng {}, đã gỡ sẵn {}, bỏ qua bảo vệ {}, lỗi {}",
+                        report.uninstalled,
+                        report.disabled,
+                        report.frozen,
+                        report.already_removed,
+                        report.skipped_protected,
+                        report.failed
+                    );
+                    self.error = report.ok_total() == 0 && report.failed > 0;
+                    if let Ok(rows) = rescanned {
+                        self.debloat_items = rows;
+                        self.debloat_scanned = true;
                     }
                 }
                 HyperOsEvent::DebloatDone {
@@ -725,9 +753,21 @@ impl HyperOsDialog {
     fn render_tab_debloat(&mut self, ui: &mut egui::Ui, can_act: bool) {
         ui_elements::tool_card(ui, |ui| {
             ui.small(
-                "Gỡ cho User 0 (`pm uninstall -k --user 0`, tự fallback `pm disable-user --user 0` nếu ROM chặn gỡ); không động vào gói lõi chống bootloop.",
+                "Gỡ sâu đa tầng cho User 0 & app cài sẵn (`/data/app`): Gỡ bản cập nhật → Gỡ User 0 → Gỡ toàn cục → Vô hiệu hóa + Force-stop → Đóng băng (Suspend/Hide). Tự bảo vệ Launcher, Bàn phím đang dùng và Find Device chống bootloop.",
             );
             ui.add_space(4.0);
+            ui.horizontal_wrapped(|ui| {
+                ui.label("Chế độ:");
+                for mode in [DeepRemovalMode::AutoDeep, DeepRemovalMode::FreezeOnly] {
+                    if ui
+                        .radio_value(&mut self.debloat_mode, mode, mode.label())
+                        .changed()
+                    {
+                        self.confirm_debloat = false;
+                    }
+                }
+            });
+            ui.add_space(3.0);
             ui.horizontal_wrapped(|ui| {
                 if ui
                     .add_enabled_ui(can_act, |ui| {
@@ -737,12 +777,14 @@ impl HyperOsDialog {
                     .clicked()
                 {
                     self.confirm_debloat = false;
+                    self.debloat_report = None;
                     self.start_scan_debloat();
                 }
                 if ui.button("Chọn gói An toàn đang cài").clicked() {
                     self.confirm_debloat = false;
                     for item in &mut self.debloat_items {
-                        item.selected = item.installed && item.risk == "An toàn";
+                        item.selected =
+                            item.installed && item.risk == "An toàn" && item.protected_reason.is_none();
                     }
                 }
                 if ui.button("Chọn tất cả đã gỡ/tắt").clicked() {
@@ -758,6 +800,12 @@ impl HyperOsDialog {
                     }
                 }
                 ui.separator();
+                ui.label("Tìm:");
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.debloat_search)
+                        .hint_text("tên app / package")
+                        .desired_width(140.0),
+                );
                 ui.label("Lọc:");
                 let prev_filter = self.debloat_filter;
                 for f in [DebloatFilter::All, DebloatFilter::Installed, DebloatFilter::Removed] {
@@ -768,44 +816,79 @@ impl HyperOsDialog {
                 }
             });
 
+            if let Some(rep) = self.debloat_report {
+                ui.add_space(4.0);
+                ui.horizontal_wrapped(|ui| {
+                    ui_elements::status_pill(
+                        ui,
+                        &format!(
+                            "Kết quả gần nhất: Gỡ {} · Tắt {} · Đóng băng {} · Đã gỡ sẵn {} · Bảo vệ {} · Lỗi {}",
+                            rep.uninstalled,
+                            rep.disabled,
+                            rep.frozen,
+                            rep.already_removed,
+                            rep.skipped_protected,
+                            rep.failed
+                        ),
+                        if rep.failed > 0 && rep.ok_total() == 0 {
+                            colors::ACCENT_RED
+                        } else {
+                            colors::ACCENT_GREEN
+                        },
+                    );
+                });
+            }
+
+            let needle = self.debloat_search.trim().to_ascii_lowercase();
             ui.add_space(6.0);
             egui::ScrollArea::vertical()
                 .id_salt("hyperos_debloat_scroll")
-                .max_height(265.0)
+                .max_height(245.0)
                 .show(ui, |ui| {
                     for item in &mut self.debloat_items {
+                        if !needle.is_empty()
+                            && !item.name.to_ascii_lowercase().contains(&needle)
+                            && !item.package.to_ascii_lowercase().contains(&needle)
+                            && !item.category.to_ascii_lowercase().contains(&needle)
+                        {
+                            continue;
+                        }
                         if self.debloat_scanned {
                             match self.debloat_filter {
                                 DebloatFilter::All => {}
                                 DebloatFilter::Installed if !item.installed => continue,
-                                DebloatFilter::Removed
-                                    if !matches!(
-                                        item.status,
-                                        DebloatStatus::RemovedUser0 | DebloatStatus::DisabledUser0
-                                    ) =>
-                                {
-                                    continue
-                                }
+                                DebloatFilter::Removed if !item.restorable => continue,
                                 _ => {}
                             }
                         }
                         ui_elements::tool_subcard(ui, None, |ui| {
-                            ui.horizontal(|ui| {
-                                ui.checkbox(
-                                    &mut item.selected,
-                                    format!("{}  ({})", item.name, item.package),
-                                );
-                                let risk_color = if item.risk == "An toàn" {
-                                    colors::ACCENT_GREEN
-                                } else {
-                                    colors::ACCENT_AMBER
+                            ui.horizontal_wrapped(|ui| {
+                                let locked = item.protected_reason.is_some();
+                                ui.add_enabled_ui(!locked, |ui| {
+                                    ui.checkbox(
+                                        &mut item.selected,
+                                        format!("{}  ({})", item.name, item.package),
+                                    );
+                                });
+                                let risk_color = match item.risk {
+                                    "An toàn" => colors::ACCENT_GREEN,
+                                    "Cảnh báo" => colors::ACCENT_RED,
+                                    _ => colors::ACCENT_AMBER,
                                 };
                                 ui_elements::status_pill(ui, item.risk, risk_color);
+                                if let Some(reason) = &item.protected_reason {
+                                    ui_elements::status_pill(
+                                        ui,
+                                        &format!("Bảo vệ: {reason}"),
+                                        colors::ACCENT_RED,
+                                    );
+                                }
                                 if self.debloat_scanned {
                                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                         let st_color = match item.status {
                                             DebloatStatus::Installed => colors::ACCENT_GREEN,
                                             DebloatStatus::DisabledUser0 => colors::ACCENT_AMBER,
+                                            DebloatStatus::SuspendedUser0 => colors::ACCENT_BLUE,
                                             DebloatStatus::RemovedUser0 => colors::ACCENT_RED,
                                             DebloatStatus::NotPresent => colors::TEXT_MUTED,
                                         };
@@ -813,7 +896,7 @@ impl HyperOsDialog {
                                     });
                                 }
                             });
-                            ui.small(format!("  {}", item.description));
+                            ui.small(format!("  {} · [{}]", item.description, item.category));
                         });
                         ui.add_space(3.0);
                     }
@@ -823,7 +906,11 @@ impl HyperOsDialog {
             let removable_selected = self
                 .debloat_items
                 .iter()
-                .filter(|i| i.selected && (!self.debloat_scanned || i.installed))
+                .filter(|i| {
+                    i.selected
+                        && i.protected_reason.is_none()
+                        && (!self.debloat_scanned || i.installed)
+                })
                 .count();
             let restorable_selected = self
                 .debloat_items
@@ -832,12 +919,16 @@ impl HyperOsDialog {
                 .count();
 
             ui.horizontal_wrapped(|ui| {
+                let verb = match self.debloat_mode {
+                    DeepRemovalMode::AutoDeep => "gỡ/tắt/đóng băng",
+                    DeepRemovalMode::FreezeOnly => "tắt/đóng băng",
+                };
                 if self.confirm_debloat {
                     if ui
                         .add_enabled_ui(can_act && removable_selected > 0, |ui| {
                             ui_elements::accent_button(
                                 ui,
-                                &format!("Xác nhận gỡ/tắt {removable_selected} gói đang cài"),
+                                &format!("Xác nhận {verb} {removable_selected} gói đang cài"),
                                 colors::ACCENT_RED,
                             )
                         })
@@ -853,7 +944,7 @@ impl HyperOsDialog {
                     .add_enabled_ui(can_act && removable_selected > 0, |ui| {
                         ui_elements::accent_button(
                             ui,
-                            &format!("Gỡ/Tắt gói đang cài ({removable_selected})"),
+                            &format!("Thực hiện {verb} ({removable_selected})"),
                             colors::ACCENT_AMBER,
                         )
                     })
@@ -873,6 +964,29 @@ impl HyperOsDialog {
                     .clicked()
                 {
                     self.start_restore_debloat();
+                }
+            });
+
+            ui.add_space(4.0);
+            ui.horizontal_wrapped(|ui| {
+                ui.label("Gói tùy chọn:");
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.custom_debloat_pkg)
+                        .hint_text("VD: com.example.bloatware (cách nhau dấu phẩy)")
+                        .desired_width(300.0),
+                );
+                let has_custom = !self.custom_debloat_pkg.trim().is_empty();
+                if ui
+                    .add_enabled(can_act && has_custom, egui::Button::new("Gỡ/Đóng băng gói này"))
+                    .clicked()
+                {
+                    self.start_custom_debloat_action(false);
+                }
+                if ui
+                    .add_enabled(can_act && has_custom, egui::Button::new("Khôi phục gói này"))
+                    .clicked()
+                {
+                    self.start_custom_debloat_action(true);
                 }
             });
         });
@@ -1216,30 +1330,36 @@ impl HyperOsDialog {
         let pkgs: Vec<String> = self
             .debloat_items
             .iter()
-            .filter(|i| i.selected && (!self.debloat_scanned || i.installed))
+            .filter(|i| {
+                i.selected
+                    && i.protected_reason.is_none()
+                    && (!self.debloat_scanned || i.installed)
+            })
             .map(|i| i.package.clone())
             .collect();
         if pkgs.is_empty() {
             return;
         }
+        let mode = self.debloat_mode;
         self.busy = true;
-        self.busy_label = format!("Đang gỡ/tắt {} gói cho User 0...", pkgs.len());
+        self.busy_label = format!("Đang xử lý sâu {} gói...", pkgs.len());
         let adb = self.adb_override();
         let backups = hyperos::default_backups_dir();
         let tx = self.tx.clone();
         std::thread::spawn(move || {
             let tx_log = tx.clone();
-            let (ok, fail) =
-                hyperos::uninstall_packages(adb.as_deref(), &serial, &pkgs, &backups, move |l| {
+            let report = hyperos::uninstall_packages(
+                adb.as_deref(),
+                &serial,
+                &pkgs,
+                mode,
+                &backups,
+                move |l| {
                     let _ = tx_log.send(HyperOsEvent::Log(l));
-                });
+                },
+            );
             let rescanned = hyperos::scan_debloat_packages(adb.as_deref(), &serial);
-            let _ = tx.send(HyperOsEvent::DebloatDone {
-                action: "Gỡ/Tắt App rác (User 0)",
-                ok,
-                fail,
-                rescanned,
-            });
+            let _ = tx.send(HyperOsEvent::DebloatUninstallDone { report, rescanned });
         });
     }
 
@@ -1274,6 +1394,66 @@ impl HyperOsDialog {
                 fail,
                 rescanned,
             });
+        });
+    }
+
+    fn start_custom_debloat_action(&mut self, restore: bool) {
+        let Some(serial) = self.selected_serial.clone() else {
+            return;
+        };
+        let pkgs: Vec<String> = self
+            .custom_debloat_pkg
+            .split([',', ';', ' ', '\n', '\r'])
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+            .collect();
+        if pkgs.is_empty() {
+            return;
+        }
+        let mode = self.debloat_mode;
+        self.busy = true;
+        self.busy_label = if restore {
+            format!("Đang khôi phục {} gói tùy chọn...", pkgs.len())
+        } else {
+            format!("Đang xử lý sâu {} gói tùy chọn...", pkgs.len())
+        };
+        let adb = self.adb_override();
+        let backups = hyperos::default_backups_dir();
+        let tx = self.tx.clone();
+        std::thread::spawn(move || {
+            let tx_log = tx.clone();
+            if restore {
+                let (ok, fail) = hyperos::restore_packages(
+                    adb.as_deref(),
+                    &serial,
+                    &pkgs,
+                    &backups,
+                    move |l| {
+                        let _ = tx_log.send(HyperOsEvent::Log(l));
+                    },
+                );
+                let rescanned = hyperos::scan_debloat_packages(adb.as_deref(), &serial);
+                let _ = tx.send(HyperOsEvent::DebloatDone {
+                    action: "Khôi phục gói tùy chọn",
+                    ok,
+                    fail,
+                    rescanned,
+                });
+            } else {
+                let report = hyperos::uninstall_packages(
+                    adb.as_deref(),
+                    &serial,
+                    &pkgs,
+                    mode,
+                    &backups,
+                    move |l| {
+                        let _ = tx_log.send(HyperOsEvent::Log(l));
+                    },
+                );
+                let rescanned = hyperos::scan_debloat_packages(adb.as_deref(), &serial);
+                let _ = tx.send(HyperOsEvent::DebloatUninstallDone { report, rescanned });
+            }
         });
     }
 
