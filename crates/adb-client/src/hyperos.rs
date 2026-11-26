@@ -1069,7 +1069,26 @@ impl DeepRemovalMode {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+/// Kết quả xử lý của TỪNG package trong một đợt debloat. `DebloatReport`
+/// chỉ giữ số đếm tổng; danh sách này cho phép phía giao diện ghi audit log
+/// theo từng package (gỡ / tắt / đóng băng bằng tier nào).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DebloatOutcome {
+    /// Đã gỡ cho User 0 (pm uninstall thành công ở một trong các tier gỡ).
+    Removed,
+    /// Đã vô hiệu hóa (pm disable-user / pm disable).
+    Disabled,
+    /// Đã đóng băng (pm suspend / pm hide).
+    Frozen,
+    /// Package vốn đã không còn cài cho User 0.
+    AlreadyRemoved,
+    /// Bỏ qua do bảo vệ hệ thống (gói lõi / IME / launcher đang dùng).
+    SkippedProtected,
+    /// Mọi tier đều thất bại (hoặc tên package không hợp lệ).
+    Failed,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct DebloatReport {
     pub uninstalled: usize,
     pub disabled: usize,
@@ -1077,12 +1096,24 @@ pub struct DebloatReport {
     pub already_removed: usize,
     pub skipped_protected: usize,
     pub failed: usize,
+    /// Kết quả theo từng package, theo đúng thứ tự đã xử lý.
+    pub outcomes: Vec<(String, DebloatOutcome)>,
 }
 
 impl DebloatReport {
     pub fn ok_total(&self) -> usize {
         self.uninstalled + self.disabled + self.frozen
     }
+}
+
+/// Kết quả một đợt khôi phục package (`restore_packages`): số đếm tổng kèm
+/// kết quả theo từng package để phía giao diện ghi audit log.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct RestoreReport {
+    pub ok: usize,
+    pub fail: usize,
+    /// `(package, thành công?)` theo đúng thứ tự đã xử lý.
+    pub outcomes: Vec<(String, bool)>,
 }
 
 #[derive(Clone, Debug)]
@@ -2852,6 +2883,7 @@ fn try_disable_or_freeze(
     if matches!(&dis_res, Ok((true, out)) if output_is_disabled(out)) {
         apply_background_lockdown(adb, serial, pkg);
         report.disabled += 1;
+        report.outcomes.push((pkg.to_string(), DebloatOutcome::Disabled));
         hist.insert(pkg.to_string());
         on_log(format!("[TẮT OK] {pkg} (đã vô hiệu hóa & chặn chạy nền User 0)"));
         return;
@@ -2881,17 +2913,20 @@ fn try_disable_or_freeze(
         Ok((true, ref out)) if output_is_frozen(out) => {
             apply_background_lockdown(adb, serial, pkg);
             report.frozen += 1;
+            report.outcomes.push((pkg.to_string(), DebloatOutcome::Frozen));
             hist.insert(pkg.to_string());
             on_log(format!("[ĐÓNG BĂNG OK] {pkg} (đã suspend/ẩn & chặn chạy nền)"));
         }
         Ok((_, out)) => {
             report.failed += 1;
+            report.outcomes.push((pkg.to_string(), DebloatOutcome::Failed));
             on_log(format!(
                 "[THẤT BẠI] {pkg}: gỡ ({prev_err}) | tắt ({dis_err}) | đóng băng ({out})"
             ));
         }
         Err(e) => {
             report.failed += 1;
+            report.outcomes.push((pkg.to_string(), DebloatOutcome::Failed));
             on_log(format!(
                 "[LỖI] {pkg}: gỡ ({prev_err}) | tắt ({dis_err}) | đóng băng ({e})"
             ));
@@ -2920,20 +2955,30 @@ pub fn uninstall_packages(
         if !is_valid_package(pkg) {
             on_log(format!("Bỏ qua package không hợp lệ: {pkg}"));
             report.failed += 1;
+            report.outcomes.push((pkg.to_string(), DebloatOutcome::Failed));
             continue;
         }
         if is_core_protected_package(pkg) {
             report.skipped_protected += 1;
+            report
+                .outcomes
+                .push((pkg.to_string(), DebloatOutcome::SkippedProtected));
             on_log(format!("[BỎ QUA BẢO VỆ] {pkg} là gói lõi hệ thống chống bootloop."));
             continue;
         }
         if active_ime.as_deref() == Some(pkg) {
             report.skipped_protected += 1;
+            report
+                .outcomes
+                .push((pkg.to_string(), DebloatOutcome::SkippedProtected));
             on_log(format!("[BỎ QUA BẢO VỆ] {pkg} đang là bàn phím mặc định."));
             continue;
         }
         if active_launcher.as_deref() == Some(pkg) {
             report.skipped_protected += 1;
+            report
+                .outcomes
+                .push((pkg.to_string(), DebloatOutcome::SkippedProtected));
             on_log(format!("[BỎ QUA BẢO VỆ] {pkg} đang là màn hình chính (Launcher)."));
             continue;
         }
@@ -2962,6 +3007,7 @@ pub fn uninstall_packages(
         );
         if matches!(&r1, Ok((true, out)) if out.contains("Success")) {
             report.uninstalled += 1;
+            report.outcomes.push((pkg.to_string(), DebloatOutcome::Removed));
             hist.insert(pkg.to_string());
             on_log(format!("[GỠ OK] {pkg}"));
             continue;
@@ -2972,6 +3018,9 @@ pub fn uninstall_packages(
         };
         if err1.contains("not installed for 0") {
             report.already_removed += 1;
+            report
+                .outcomes
+                .push((pkg.to_string(), DebloatOutcome::AlreadyRemoved));
             hist.insert(pkg.to_string());
             on_log(format!("[ĐÃ GỠ SẴN] {pkg} (không còn cài cho User 0)"));
             continue;
@@ -2986,6 +3035,7 @@ pub fn uninstall_packages(
         );
         if matches!(&r2, Ok((true, out)) if out.contains("Success")) {
             report.uninstalled += 1;
+            report.outcomes.push((pkg.to_string(), DebloatOutcome::Removed));
             hist.insert(pkg.to_string());
             on_log(format!("[GỠ OK] {pkg}"));
             continue;
@@ -2996,6 +3046,9 @@ pub fn uninstall_packages(
         };
         if err2.contains("not installed for 0") {
             report.already_removed += 1;
+            report
+                .outcomes
+                .push((pkg.to_string(), DebloatOutcome::AlreadyRemoved));
             hist.insert(pkg.to_string());
             on_log(format!("[ĐÃ GỠ SẴN] {pkg} (không còn cài cho User 0)"));
             continue;
@@ -3016,6 +3069,7 @@ pub fn uninstall_packages(
         );
         if matches!(&r3a, Ok((true, out)) if out.contains("Success")) {
             report.uninstalled += 1;
+            report.outcomes.push((pkg.to_string(), DebloatOutcome::Removed));
             hist.insert(pkg.to_string());
             on_log(format!("[GỠ OK] {pkg} (sau khi gỡ bản cập nhật hệ thống)"));
             continue;
@@ -3028,6 +3082,7 @@ pub fn uninstall_packages(
         );
         if matches!(&r3b, Ok((true, out)) if out.contains("Success")) {
             report.uninstalled += 1;
+            report.outcomes.push((pkg.to_string(), DebloatOutcome::Removed));
             hist.insert(pkg.to_string());
             on_log(format!("[GỠ SÂU OK] {pkg} (gói /data/app cài sẵn)"));
             continue;
@@ -3062,17 +3117,18 @@ pub fn restore_packages(
     packages: &[String],
     backups_dir: &Path,
     mut on_log: impl FnMut(String),
-) -> (usize, usize) {
+) -> RestoreReport {
     let adb = resolve_adb_verified(adb_bin);
     let mut backup = load_backup(backups_dir, serial);
     let mut hist: HashSet<String> = backup.uninstalled_packages.iter().cloned().collect();
-    let (mut ok_cnt, mut fail_cnt) = (0usize, 0usize);
+    let mut report = RestoreReport::default();
 
     for raw in packages {
         let pkg = raw.trim();
         if !is_valid_package(pkg) {
             on_log(format!("Bỏ qua package không hợp lệ: {pkg}"));
-            fail_cnt += 1;
+            report.fail += 1;
+            report.outcomes.push((pkg.to_string(), false));
             continue;
         }
         // Layer 1: install-existing
@@ -3140,11 +3196,13 @@ pub fn restore_packages(
         );
 
         if installed_ok || unhide_ok || unsuspend_ok || enabled_ok {
-            ok_cnt += 1;
+            report.ok += 1;
+            report.outcomes.push((pkg.to_string(), true));
             hist.remove(pkg);
             on_log(format!("[KHÔI PHỤC OK] {pkg}"));
         } else {
-            fail_cnt += 1;
+            report.fail += 1;
+            report.outcomes.push((pkg.to_string(), false));
             let detail = match res {
                 Ok((_, out)) => out,
                 Err(e) => e,
@@ -3157,7 +3215,7 @@ pub fn restore_packages(
     sorted.sort();
     backup.uninstalled_packages = sorted;
     save_backup(backups_dir, serial, &backup);
-    (ok_cnt, fail_cnt)
+    report
 }
 
 // ---------------------------------------------------------------------------

@@ -1,3 +1,4 @@
+use crate::audit;
 use crate::i18n;
 use crate::theme::colors;
 use crate::ui_elements;
@@ -2204,6 +2205,7 @@ impl FlashDialog {
 
         let fb_bin = self.fastboot_override();
         let options = self.full_options.clone();
+        let audit_serial = serial.clone();
         let tx = self.tx.clone();
         std::thread::spawn(move || {
             let tx_prog = tx.clone();
@@ -2215,6 +2217,19 @@ impl FlashDialog {
                 move |upd| {
                     let _ = tx_prog.send(FlashEvent::Progress(upd));
                 },
+            );
+            let (ok, msg) = match &result {
+                Ok(()) => (true, String::new()),
+                Err(e) => (false, e.clone()),
+            };
+            audit::record(
+                &audit_serial,
+                None,
+                "flash.full_rom",
+                "",
+                &log_path.display().to_string(),
+                ok,
+                &msg,
             );
             let _ = tx.send(FlashEvent::WriteFinished(
                 result.map(|()| i18n::t("flash.done_full").into()),
@@ -2261,6 +2276,19 @@ impl FlashDialog {
                     let _ = tx_prog.send(FlashEvent::Progress(upd));
                 },
             );
+            let (ok, msg) = match &result {
+                Ok(()) => (true, String::new()),
+                Err(e) => (false, e.clone()),
+            };
+            audit::record(
+                &serial,
+                None,
+                "flash.single_partition",
+                &partition,
+                &format!("image={}; log={}", path.display(), log_path.display()),
+                ok,
+                &msg,
+            );
             let _ = tx.send(FlashEvent::WriteFinished(
                 result.map(|()| i18n::tf("flash.done_single", &[("part", &partition)])),
             ));
@@ -2297,6 +2325,19 @@ impl FlashDialog {
                 flash::boot_image(fb_bin.as_deref(), &serial, &path, &log_path, move |upd| {
                     let _ = tx_prog.send(FlashEvent::Progress(upd));
                 });
+            let (ok, msg) = match &result {
+                Ok(()) => (true, String::new()),
+                Err(e) => (false, e.clone()),
+            };
+            audit::record(
+                &serial,
+                None,
+                "flash.temp_boot",
+                &path.display().to_string(),
+                &log_path.display().to_string(),
+                ok,
+                &msg,
+            );
             let _ = tx.send(FlashEvent::WriteFinished(
                 result.map(|()| i18n::t("flash.done_temp_boot").into()),
             ));
@@ -2333,6 +2374,19 @@ impl FlashDialog {
                 flash::adb_sideload(adb_bin.as_deref(), &serial, &path, &log_path, move |upd| {
                     let _ = tx_prog.send(FlashEvent::Progress(upd));
                 });
+            let (ok, msg) = match &result {
+                Ok(()) => (true, String::new()),
+                Err(e) => (false, e.clone()),
+            };
+            audit::record(
+                &serial,
+                None,
+                "flash.adb_sideload",
+                &path.display().to_string(),
+                &log_path.display().to_string(),
+                ok,
+                &msg,
+            );
             let _ = tx.send(FlashEvent::WriteFinished(
                 result.map(|()| i18n::t("flash.done_sideload").into()),
             ));
@@ -2402,6 +2456,19 @@ impl FlashDialog {
                     let _ = tx_prog.send(FlashEvent::Progress(upd));
                 },
             );
+            let (ok, msg) = match &result {
+                Ok(()) => (true, String::new()),
+                Err(e) => (false, e.clone()),
+            };
+            audit::record(
+                &serial,
+                None,
+                if locks_bl { "flash.stock_lock" } else { "flash.stock" },
+                &info.script_path.display().to_string(),
+                &log_path.display().to_string(),
+                ok,
+                &msg,
+            );
             let done_msg = if locks_bl {
                 i18n::t("flash.done_stock_locked").into()
             } else {
@@ -2441,6 +2508,19 @@ impl FlashDialog {
                 flash::lock_bootloader(fb_bin.as_deref(), &serial, method, &log_path, move |upd| {
                     let _ = tx_prog.send(FlashEvent::Progress(upd));
                 });
+            let (ok, msg) = match &result {
+                Ok(()) => (true, String::new()),
+                Err(e) => (false, e.clone()),
+            };
+            audit::record(
+                &serial,
+                None,
+                "flash.lock_bootloader",
+                &method.display_cmd(),
+                &log_path.display().to_string(),
+                ok,
+                &msg,
+            );
             let _ = tx.send(FlashEvent::WriteFinished(result.map(|()| {
                 i18n::tf("flash.done_direct_lock", &[("cmd", method.display_cmd())])
             })));

@@ -8,6 +8,7 @@ use adb_client::apps::UninstallOutcome;
 use crossbeam_channel::{Receiver, unbounded};
 use eframe::egui;
 
+use crate::audit;
 use crate::format::format_bytes_mb;
 use crate::i18n;
 use crate::metrics::PackageStorageState;
@@ -673,6 +674,32 @@ impl AppCleanup {
                     }
                 }
                 .map_err(|err| i18n::adb_error_vi(&err.user_message()));
+
+                // Audit log: một dòng cho mỗi package đã gỡ / khôi phục.
+                let audit_action = match action {
+                    PackageAction::Uninstall => "app.uninstall",
+                    PackageAction::Restore => "app.restore",
+                };
+                match &result {
+                    Ok(outcome) => {
+                        let detail = match outcome {
+                            Some(o) => format!("outcome={o:?}"),
+                            None => String::new(),
+                        };
+                        audit::record(
+                            &serial,
+                            None,
+                            audit_action,
+                            &package,
+                            &detail,
+                            true,
+                            "",
+                        );
+                    }
+                    Err(e) => {
+                        audit::record(&serial, None, audit_action, &package, "", false, e);
+                    }
+                }
 
                 if result.is_ok() {
                     succeeded += 1;

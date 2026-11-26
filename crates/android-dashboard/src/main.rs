@@ -1,4 +1,5 @@
 mod app;
+mod audit;
 mod format;
 mod i18n;
 mod insight;

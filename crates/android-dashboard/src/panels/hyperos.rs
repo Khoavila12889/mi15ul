@@ -5,13 +5,14 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use adb_client::hyperos::{
-    self, DEBLOAT_PACKAGES, DebloatReport, DebloatState, DebloatStatus, DeepRemovalMode,
-    DeviceHyperOsInfo, LocaleStatus, NOTIFICATION_APPS, NotificationAppState, NotificationFixReport,
-    StagedMtz, THEME_CATALOG,
+    self, DEBLOAT_PACKAGES, DebloatOutcome, DebloatReport, DebloatState, DebloatStatus,
+    DeepRemovalMode, DeviceHyperOsInfo, LocaleStatus, NOTIFICATION_APPS, NotificationAppState,
+    NotificationFixReport, StagedMtz, THEME_CATALOG,
 };
 use crossbeam_channel::{Receiver, Sender, unbounded};
 use eframe::egui;
 
+use crate::audit;
 use crate::i18n;
 use crate::theme::colors;
 use crate::ui_elements;
@@ -213,6 +214,14 @@ impl HyperOsDialog {
         if s.is_empty() { None } else { Some(s.to_string()) }
     }
 
+    /// Tên máy "Hãng Model" nếu đã đọc được thông tin thiết bị — đính kèm
+    /// vào audit log để file theo serial vẫn đọc hiểu được bằng mắt.
+    fn device_model(&self) -> Option<String> {
+        self.device_info
+            .as_ref()
+            .map(|i| format!("{} {}", i.brand, i.model))
+    }
+
     fn append_log(&mut self, msg: &str) {
         let ts = chrono::Local::now().format("%H:%M:%S");
         if !self.log.is_empty() && !self.log.ends_with('\n') {
@@ -386,7 +395,6 @@ impl HyperOsDialog {
                 HyperOsEvent::DebloatUninstallDone { report, rescanned } => {
                     self.busy = false;
                     self.confirm_debloat = false;
-                    self.debloat_report = Some(report);
                     self.status = format!(
                         "Hoàn tất: gỡ {}, tắt {}, đóng băng {}, đã gỡ sẵn {}, bỏ qua bảo vệ {}, lỗi {}",
                         report.uninstalled,
@@ -397,6 +405,7 @@ impl HyperOsDialog {
                         report.failed
                     );
                     self.error = report.ok_total() == 0 && report.failed > 0;
+                    self.debloat_report = Some(report);
                     if let Ok(rows) = rescanned {
                         self.debloat_items = rows;
                         self.debloat_scanned = true;
@@ -816,7 +825,7 @@ impl HyperOsDialog {
                 }
             });
 
-            if let Some(rep) = self.debloat_report {
+            if let Some(rep) = &self.debloat_report {
                 ui.add_space(4.0);
                 ui.horizontal_wrapped(|ui| {
                     ui_elements::status_pill(
@@ -1173,6 +1182,7 @@ impl HyperOsDialog {
         let adb = self.adb_override();
         let backups = hyperos::default_backups_dir();
         let ping = self.send_fcm_ping;
+        let model = self.device_model();
         let tx = self.tx.clone();
         std::thread::spawn(move || {
             let tx_log = tx.clone();
@@ -1186,6 +1196,34 @@ impl HyperOsDialog {
                     let _ = tx_log.send(HyperOsEvent::Log(line));
                 },
             );
+            match &res {
+                Ok(rep) => audit::record(
+                    &serial,
+                    model.as_deref(),
+                    "hyperos.notification_fix",
+                    "MILLET_NO_RESTRICT_APP",
+                    &format!(
+                        "pkgs=[{}]; millet_ok={}; doze={}/{}; appops={}/{}",
+                        pkgs.join(","),
+                        rep.millet_ok,
+                        rep.doze_ok,
+                        rep.total_pkgs,
+                        rep.appops_ok,
+                        rep.total_pkgs
+                    ),
+                    true,
+                    "",
+                ),
+                Err(e) => audit::record(
+                    &serial,
+                    model.as_deref(),
+                    "hyperos.notification_fix",
+                    "MILLET_NO_RESTRICT_APP",
+                    &format!("pkgs=[{}]", pkgs.join(",")),
+                    false,
+                    e,
+                ),
+            }
             let _ = tx.send(HyperOsEvent::NotiApplied(res));
         });
     }
@@ -1212,12 +1250,33 @@ impl HyperOsDialog {
         self.busy_label = "Đang khôi phục MILLET_NO_RESTRICT_APP gốc...".into();
         let adb = self.adb_override();
         let backups = hyperos::default_backups_dir();
+        let model = self.device_model();
         let tx = self.tx.clone();
         std::thread::spawn(move || {
             let tx_log = tx.clone();
             let res = hyperos::restore_millet_backup(adb.as_deref(), &serial, &backups, move |l| {
                 let _ = tx_log.send(HyperOsEvent::Log(l));
             });
+            match &res {
+                Ok(msg) => audit::record(
+                    &serial,
+                    model.as_deref(),
+                    "hyperos.millet_restore",
+                    "MILLET_NO_RESTRICT_APP",
+                    "",
+                    true,
+                    msg,
+                ),
+                Err(e) => audit::record(
+                    &serial,
+                    model.as_deref(),
+                    "hyperos.millet_restore",
+                    "MILLET_NO_RESTRICT_APP",
+                    "",
+                    false,
+                    e,
+                ),
+            }
             let _ = tx.send(HyperOsEvent::MilletRestored(res));
         });
     }
@@ -1231,12 +1290,33 @@ impl HyperOsDialog {
         self.busy_label = format!("Đang đặt system_locales = {tag}...");
         let adb = self.adb_override();
         let backups = hyperos::default_backups_dir();
+        let model = self.device_model();
         let tx = self.tx.clone();
         std::thread::spawn(move || {
             let tx_log = tx.clone();
             let res = hyperos::set_system_locale(adb.as_deref(), &serial, &tag, &backups, move |l| {
                 let _ = tx_log.send(HyperOsEvent::Log(l));
             });
+            match &res {
+                Ok(msg) => audit::record(
+                    &serial,
+                    model.as_deref(),
+                    "hyperos.locale",
+                    &tag,
+                    "system_locales",
+                    true,
+                    msg,
+                ),
+                Err(e) => audit::record(
+                    &serial,
+                    model.as_deref(),
+                    "hyperos.locale",
+                    &tag,
+                    "system_locales",
+                    false,
+                    e,
+                ),
+            }
             let loc_st = hyperos::get_locale_status(adb.as_deref(), &serial, &backups);
             let _ = tx.send(HyperOsEvent::LocaleUpdated(res, loc_st));
         });
@@ -1250,12 +1330,33 @@ impl HyperOsDialog {
         self.busy_label = "Đang khôi phục ngôn ngữ gốc...".into();
         let adb = self.adb_override();
         let backups = hyperos::default_backups_dir();
+        let model = self.device_model();
         let tx = self.tx.clone();
         std::thread::spawn(move || {
             let tx_log = tx.clone();
             let res = hyperos::restore_locale_backup(adb.as_deref(), &serial, &backups, move |l| {
                 let _ = tx_log.send(HyperOsEvent::Log(l));
             });
+            match &res {
+                Ok(msg) => audit::record(
+                    &serial,
+                    model.as_deref(),
+                    "hyperos.locale_restore",
+                    "system_locales",
+                    "",
+                    true,
+                    msg,
+                ),
+                Err(e) => audit::record(
+                    &serial,
+                    model.as_deref(),
+                    "hyperos.locale_restore",
+                    "system_locales",
+                    "",
+                    false,
+                    e,
+                ),
+            }
             let loc_st = hyperos::get_locale_status(adb.as_deref(), &serial, &backups);
             let _ = tx.send(HyperOsEvent::LocaleUpdated(res, loc_st));
         });
@@ -1291,6 +1392,7 @@ impl HyperOsDialog {
         self.busy = true;
         self.busy_label = "Đang đóng gói .mrm/.mrc & đẩy Theme qua ADB...".into();
         let adb = self.adb_override();
+        let model = self.device_model();
         let tx = self.tx.clone();
         std::thread::spawn(move || {
             let tx_log = tx.clone();
@@ -1305,6 +1407,32 @@ impl HyperOsDialog {
                     let _ = tx_log.send(HyperOsEvent::Log(l));
                 },
             );
+            match &res {
+                Ok(staged) => audit::record(
+                    &serial,
+                    model.as_deref(),
+                    "hyperos.theme",
+                    &staged.title,
+                    &format!(
+                        "uuid={}; modules={}; files={}; src={}",
+                        staged.theme_uuid,
+                        staged.module_count,
+                        staged.file_count,
+                        mtz_path.display()
+                    ),
+                    true,
+                    "",
+                ),
+                Err(e) => audit::record(
+                    &serial,
+                    model.as_deref(),
+                    "hyperos.theme",
+                    &mtz_path.display().to_string(),
+                    "",
+                    false,
+                    e,
+                ),
+            }
             let _ = tx.send(HyperOsEvent::MtzDeployed(res));
         });
     }
@@ -1345,6 +1473,7 @@ impl HyperOsDialog {
         self.busy_label = format!("Đang xử lý sâu {} gói...", pkgs.len());
         let adb = self.adb_override();
         let backups = hyperos::default_backups_dir();
+        let model = self.device_model();
         let tx = self.tx.clone();
         std::thread::spawn(move || {
             let tx_log = tx.clone();
@@ -1358,6 +1487,7 @@ impl HyperOsDialog {
                     let _ = tx_log.send(HyperOsEvent::Log(l));
                 },
             );
+            audit_debloat_outcomes(&serial, model.as_deref(), mode, &report);
             let rescanned = hyperos::scan_debloat_packages(adb.as_deref(), &serial);
             let _ = tx.send(HyperOsEvent::DebloatUninstallDone { report, rescanned });
         });
@@ -1380,13 +1510,16 @@ impl HyperOsDialog {
         self.busy_label = format!("Đang khôi phục {} gói...", pkgs.len());
         let adb = self.adb_override();
         let backups = hyperos::default_backups_dir();
+        let model = self.device_model();
         let tx = self.tx.clone();
         std::thread::spawn(move || {
             let tx_log = tx.clone();
-            let (ok, fail) =
+            let report =
                 hyperos::restore_packages(adb.as_deref(), &serial, &pkgs, &backups, move |l| {
                     let _ = tx_log.send(HyperOsEvent::Log(l));
                 });
+            audit_restore_outcomes(&serial, model.as_deref(), &report);
+            let (ok, fail) = (report.ok, report.fail);
             let rescanned = hyperos::scan_debloat_packages(adb.as_deref(), &serial);
             let _ = tx.send(HyperOsEvent::DebloatDone {
                 action: "Khôi phục app đã gỡ",
@@ -1420,11 +1553,12 @@ impl HyperOsDialog {
         };
         let adb = self.adb_override();
         let backups = hyperos::default_backups_dir();
+        let model = self.device_model();
         let tx = self.tx.clone();
         std::thread::spawn(move || {
             let tx_log = tx.clone();
             if restore {
-                let (ok, fail) = hyperos::restore_packages(
+                let report = hyperos::restore_packages(
                     adb.as_deref(),
                     &serial,
                     &pkgs,
@@ -1433,6 +1567,8 @@ impl HyperOsDialog {
                         let _ = tx_log.send(HyperOsEvent::Log(l));
                     },
                 );
+                audit_restore_outcomes(&serial, model.as_deref(), &report);
+                let (ok, fail) = (report.ok, report.fail);
                 let rescanned = hyperos::scan_debloat_packages(adb.as_deref(), &serial);
                 let _ = tx.send(HyperOsEvent::DebloatDone {
                     action: "Khôi phục gói tùy chọn",
@@ -1451,6 +1587,7 @@ impl HyperOsDialog {
                         let _ = tx_log.send(HyperOsEvent::Log(l));
                     },
                 );
+                audit_debloat_outcomes(&serial, model.as_deref(), mode, &report);
                 let rescanned = hyperos::scan_debloat_packages(adb.as_deref(), &serial);
                 let _ = tx.send(HyperOsEvent::DebloatUninstallDone { report, rescanned });
             }
@@ -1464,14 +1601,82 @@ impl HyperOsDialog {
         self.busy = true;
         self.busy_label = "Đang tắt Developer Options & USB Debugging...".into();
         let adb = self.adb_override();
+        let model = self.device_model();
         let tx = self.tx.clone();
         std::thread::spawn(move || {
             let tx_log = tx.clone();
             let res = hyperos::lock_developer_and_adb(adb.as_deref(), &serial, move |l| {
                 let _ = tx_log.send(HyperOsEvent::Log(l));
             });
+            match &res {
+                Ok(msg) => audit::record(
+                    &serial,
+                    model.as_deref(),
+                    "hyperos.bank_lock",
+                    "",
+                    "developer_options+usb_debugging",
+                    true,
+                    msg,
+                ),
+                Err(e) => audit::record(
+                    &serial,
+                    model.as_deref(),
+                    "hyperos.bank_lock",
+                    "",
+                    "developer_options+usb_debugging",
+                    false,
+                    e,
+                ),
+            }
             let _ = tx.send(HyperOsEvent::BankLocked(res));
         });
+    }
+}
+
+/// Ghi audit log cho một đợt debloat: một dòng cho MỖI package, action theo
+/// đúng tier đã xử lý package đó (gỡ / tắt / đóng băng), detail là chế độ chạy.
+fn audit_debloat_outcomes(
+    serial: &str,
+    model: Option<&str>,
+    mode: DeepRemovalMode,
+    report: &DebloatReport,
+) {
+    let detail = mode.label();
+    for (pkg, outcome) in &report.outcomes {
+        let (action, ok, message) = match outcome {
+            DebloatOutcome::Removed => ("debloat.remove", true, ""),
+            DebloatOutcome::Disabled => ("debloat.disable", true, ""),
+            DebloatOutcome::Frozen => ("debloat.freeze", true, ""),
+            DebloatOutcome::AlreadyRemoved => {
+                ("debloat.remove", true, "Đã gỡ sẵn cho User 0 từ trước")
+            }
+            DebloatOutcome::SkippedProtected => (
+                "debloat.skipped_protected",
+                false,
+                "Bỏ qua do bảo vệ hệ thống",
+            ),
+            DebloatOutcome::Failed => (
+                "debloat.failed",
+                false,
+                "Gỡ/tắt/đóng băng đều thất bại",
+            ),
+        };
+        audit::record(serial, model, action, pkg, detail, ok, message);
+    }
+}
+
+/// Ghi audit log cho một đợt khôi phục: một dòng cho mỗi package.
+fn audit_restore_outcomes(serial: &str, model: Option<&str>, report: &hyperos::RestoreReport) {
+    for (pkg, ok) in &report.outcomes {
+        audit::record(
+            serial,
+            model,
+            "restore.package",
+            pkg,
+            "",
+            *ok,
+            if *ok { "" } else { "Không khôi phục được" },
+        );
     }
 }
 

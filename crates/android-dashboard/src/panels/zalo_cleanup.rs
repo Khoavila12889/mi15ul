@@ -218,6 +218,19 @@ fn delete(
     let (mut deleted, mut skipped, mut failed) = (0, 0, 0);
     for chunk in preview.files.chunks(20) {
         if cancel.load(Ordering::Relaxed) {
+            crate::audit::record(
+                &preview.serial,
+                None,
+                "zalo.cleanup",
+                ROOT,
+                &format!(
+                    "deleted={deleted} skipped={skipped} failed={failed} total={} reports={}",
+                    preview.files.len(),
+                    reports_dir().display()
+                ),
+                false,
+                "Người dùng dừng giữa chừng",
+            );
             return Ok(format!(
                 "Đã dừng trên {}: xóa {deleted} tệp, bỏ qua {skipped}, lỗi {failed}. Hãy quét lại trước khi tiếp tục.",
                 preview.serial
@@ -262,6 +275,20 @@ fn delete(
             preview.files.len()
         ));
     }
+    crate::audit::record(
+        &preview.serial,
+        None,
+        "zalo.cleanup",
+        ROOT,
+        &format!(
+            "deleted={deleted} skipped={skipped} failed={failed} total={} cutoff={} reports={}",
+            preview.files.len(),
+            preview.filter.date,
+            reports_dir().display()
+        ),
+        failed == 0,
+        "",
+    );
     Ok(format!(
         "Thiết bị {}: đã xóa {deleted} tệp; bỏ qua {skipped} tệp thay đổi/không còn; lỗi {failed}. Tin nhắn và tài liệu được giữ nguyên.",
         preview.serial
