@@ -1,6 +1,7 @@
 use eframe::egui;
 
 use crate::format::format_gb_from_kb;
+use crate::i18n;
 use crate::metrics::MetricStore;
 use crate::theme;
 use crate::ui_elements;
@@ -9,7 +10,7 @@ use super::donut::show_usage_donut;
 
 pub fn ram_gauge_panel(ui: &mut egui::Ui, metrics: &MetricStore) {
     if let Some(error) = &metrics.ram_error {
-        ui_elements::error_label(ui, error);
+        ui_elements::error_label(ui, i18n::adb_error_vi(error));
     }
 
     let Some(memory) = &metrics.ram_memory else {

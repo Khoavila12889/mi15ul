@@ -1,12 +1,13 @@
 use ai_insight::{InsightConfig, InsightEngine};
 use eframe::egui;
 
+use crate::i18n;
 use crate::insight_store;
 use crate::theme::{self, colors};
 
 /// Label column + spacing + text field width, matching the grid below.
-const AI_PROVIDER_DIALOG_WIDTH: f32 = 470.0;
-const AI_PROVIDER_FIELD_WIDTH: f32 = 330.0;
+const AI_PROVIDER_DIALOG_WIDTH: f32 = 540.0;
+const AI_PROVIDER_FIELD_WIDTH: f32 = 340.0;
 
 /// Gap from the window top/right edges to the dialog.
 const AI_PROVIDER_DIALOG_EDGE: f32 = 24.0;
@@ -44,12 +45,12 @@ impl Preset {
 
     fn label(self) -> &'static str {
         match self {
-            Self::Codex => "Codex CLI (local login)",
-            Self::OpenCode => "OpenCode CLI (local login)",
-            Self::OpenCodeApi => "OpenCode Console (API key)",
-            Self::OpenAi => "OpenAI (API key)",
-            Self::DeepSeek => "DeepSeek (API key)",
-            Self::Custom => "Custom HTTP (Chat Completions)",
+            Self::Codex => i18n::t("settings.preset_codex"),
+            Self::OpenCode => i18n::t("settings.preset_opencode"),
+            Self::OpenCodeApi => i18n::t("settings.preset_opencode_api"),
+            Self::OpenAi => i18n::t("settings.preset_openai"),
+            Self::DeepSeek => i18n::t("settings.preset_deepseek"),
+            Self::Custom => i18n::t("settings.preset_custom"),
         }
     }
 
@@ -82,23 +83,12 @@ impl Preset {
 
     fn hint(self) -> &'static str {
         match self {
-            Self::Codex => {
-                "Runs `codex exec` with your existing Codex login (read-only, ephemeral). \
-                 No API key needed. Model may stay empty to use your Codex config."
-            }
-            Self::OpenCode => {
-                "Runs `opencode run --standalone` with your existing OpenCode login. \
-                 No API key needed. Model format: provider/model."
-            }
-            Self::OpenCodeApi => {
-                "OpenCode Console/Zen endpoint. Create a key at opencode.ai/console. \
-                 Any model from the Console catalog works."
-            }
-            Self::OpenAi => {
-                "OpenAI API key. Codex-only models such as gpt-5-codex need the Codex CLI preset."
-            }
-            Self::DeepSeek => "DeepSeek API key. The base URL has no /v1 suffix.",
-            Self::Custom => "Any OpenAI-compatible /chat/completions endpoint.",
+            Self::Codex => i18n::t("settings.desc_codex"),
+            Self::OpenCode => i18n::t("settings.desc_opencode"),
+            Self::OpenCodeApi => i18n::t("settings.desc_opencode_api"),
+            Self::OpenAi => i18n::t("settings.desc_openai"),
+            Self::DeepSeek => i18n::t("settings.desc_deepseek"),
+            Self::Custom => i18n::t("settings.desc_custom"),
         }
     }
 
@@ -200,7 +190,7 @@ pub fn show(ctx: &egui::Context, dialog: &mut SettingsDialog) -> Option<Settings
     let mut save = false;
     let mut cancel = false;
     let mut detect = false;
-    egui::Window::new("Configure AI Provider")
+    egui::Window::new(i18n::t("settings.title"))
         .id(egui::Id::new("ai_provider_settings"))
         .open(&mut open)
         .collapsible(false)
@@ -224,7 +214,7 @@ pub fn show(ctx: &egui::Context, dialog: &mut SettingsDialog) -> Option<Settings
                 .num_columns(2)
                 .spacing([8.0, 6.0])
                 .show(ui, |ui| {
-                    ui.label("Provider");
+                    ui.label(i18n::t("settings.provider"));
                     let mut preset = dialog.preset;
                     egui::ComboBox::from_id_salt("ai_provider_preset")
                         .selected_text(preset.label())
@@ -240,17 +230,17 @@ pub fn show(ctx: &egui::Context, dialog: &mut SettingsDialog) -> Option<Settings
                     ui.end_row();
 
                     ui.label(match dialog.preset {
-                        Preset::Codex => "Model (optional)",
-                        _ => "Model",
+                        Preset::Codex => i18n::t("settings.model_optional"),
+                        _ => i18n::t("settings.model"),
                     });
                     ui.add(
                         egui::TextEdit::singleline(&mut dialog.model)
                             .desired_width(AI_PROVIDER_FIELD_WIDTH)
                             .hint_text(
                                 egui::RichText::new(match dialog.preset {
-                                    Preset::Codex => "empty = Codex config",
-                                    Preset::OpenCode => "provider/model",
-                                    _ => "model-name",
+                                    Preset::Codex => i18n::t("settings.hint_empty_codex"),
+                                    Preset::OpenCode => i18n::t("settings.hint_provider_model"),
+                                    _ => i18n::t("settings.hint_model_name"),
                                 })
                                 .color(colors::PLACEHOLDER_TEXT),
                             ),
@@ -258,7 +248,7 @@ pub fn show(ctx: &egui::Context, dialog: &mut SettingsDialog) -> Option<Settings
                     ui.end_row();
 
                     if dialog.preset.engine() == InsightEngine::Http {
-                        ui.label("Base URL");
+                        ui.label(i18n::t("settings.base_url"));
                         ui.add(
                             egui::TextEdit::singleline(&mut dialog.base_url)
                                 .desired_width(AI_PROVIDER_FIELD_WIDTH)
@@ -269,7 +259,7 @@ pub fn show(ctx: &egui::Context, dialog: &mut SettingsDialog) -> Option<Settings
                         );
                         ui.end_row();
 
-                        ui.label("API key");
+                        ui.label(i18n::t("settings.api_key"));
                         ui.add(
                             egui::TextEdit::singleline(&mut dialog.api_key)
                                 .desired_width(AI_PROVIDER_FIELD_WIDTH)
@@ -305,14 +295,14 @@ pub fn show(ctx: &egui::Context, dialog: &mut SettingsDialog) -> Option<Settings
             ui.scope(|ui| {
                 style_dialog_buttons(ui);
                 ui.horizontal(|ui| {
-                    if ui.button("Detect local logins").clicked() {
+                    if ui.button(i18n::t("settings.detect_local")).clicked() {
                         detect = true;
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
-                        if ui.button("Save").clicked() {
+                        if ui.button(i18n::t("common.save")).clicked() {
                             save = true;
                         }
-                        if ui.button("Cancel").clicked() {
+                        if ui.button(i18n::t("common.cancel")).clicked() {
                             cancel = true;
                         }
                     });

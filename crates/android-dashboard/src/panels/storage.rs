@@ -3,6 +3,7 @@ use eframe::egui;
 
 use crate::app::PackageStorageState;
 use crate::format::{format_bytes, format_bytes_mb, format_gb_from_bytes, truncate_package_name};
+use crate::i18n;
 use crate::metrics::MetricStore;
 use crate::theme;
 use crate::ui_elements;
@@ -11,10 +12,10 @@ use super::donut::show_usage_donut;
 
 pub fn storage_usage_panel(ui: &mut egui::Ui, metrics: &MetricStore) {
     if let Some(error) = &metrics.storage_breakdown_error {
-        ui_elements::error_label(ui, error);
+        ui_elements::error_label(ui, i18n::adb_error_vi(error));
     }
     if let Some(error) = &metrics.app_storage.error {
-        ui_elements::error_label(ui, error);
+        ui_elements::error_label(ui, i18n::adb_error_vi(error));
     }
 
     ui_elements::panel_body(ui, theme::colors::MEMORY_DISK_BODY, |ui| {
@@ -26,7 +27,7 @@ pub fn storage_usage_panel(ui: &mut egui::Ui, metrics: &MetricStore) {
                 if let Some(breakdown) = &metrics.storage_breakdown {
                     show_storage_categories(ui, &breakdown.categories);
                 } else if metrics.storage_breakdown_error.is_none() {
-                    ui.label("Loading storage…");
+                    ui.label(i18n::t("storage.loading"));
                 }
                 ui.separator();
                 show_app_storage(ui, &metrics.app_storage);
@@ -36,7 +37,7 @@ pub fn storage_usage_panel(ui: &mut egui::Ui, metrics: &MetricStore) {
 
 pub fn storage_gauge_panel(ui: &mut egui::Ui, metrics: &MetricStore) {
     if let Some(error) = &metrics.storage_gauge_error {
-        ui_elements::error_label(ui, error);
+        ui_elements::error_label(ui, i18n::adb_error_vi(error));
     }
 
     let Some(overview) = &metrics.storage_gauge else {
@@ -60,19 +61,19 @@ fn show_storage_donut(ui: &mut egui::Ui, overview: &StorageOverview) {
 }
 
 fn show_storage_categories(ui: &mut egui::Ui, categories: &[StorageCategory]) {
-    ui.label("Storage breakdown");
+    ui.label(i18n::t("storage.breakdown"));
 
     egui::Grid::new("storage_categories")
         .num_columns(2)
         .spacing(theme::GRID_SPACING)
         .striped(true)
         .show(ui, |ui| {
-            ui.label("Category");
-            ui.label("Size");
+            ui.label(i18n::t("storage.col_category"));
+            ui.label(i18n::t("storage.col_size"));
             ui.end_row();
 
             for category in categories {
-                ui.label(&category.name);
+                ui.label(i18n::storage_category(&category.name));
                 ui.label(format_bytes(category.bytes));
                 ui.end_row();
             }
@@ -81,7 +82,7 @@ fn show_storage_categories(ui: &mut egui::Ui, categories: &[StorageCategory]) {
 
 fn show_app_storage(ui: &mut egui::Ui, storage: &PackageStorageState) {
     ui.horizontal(|ui| {
-        ui.label("Apps");
+        ui.label(i18n::t("storage.apps"));
         if storage.scanning {
             ui.label(format!(
                 "({}/{})",
@@ -92,7 +93,7 @@ fn show_app_storage(ui: &mut egui::Ui, storage: &PackageStorageState) {
     });
 
     if storage.packages.is_empty() {
-        ui.label("Loading package list…");
+        ui.label(i18n::t("storage.loading_packages"));
         return;
     }
 
@@ -101,8 +102,8 @@ fn show_app_storage(ui: &mut egui::Ui, storage: &PackageStorageState) {
         .spacing(theme::GRID_SPACING)
         .striped(true)
         .show(ui, |ui| {
-            ui.label("Package");
-            ui.label("Storage");
+            ui.label(i18n::t("storage.col_package"));
+            ui.label(i18n::t("storage.col_storage"));
             ui.end_row();
 
             for (package, bytes) in storage.sorted_rows() {

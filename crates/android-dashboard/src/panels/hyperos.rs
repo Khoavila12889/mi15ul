@@ -11,6 +11,7 @@ use adb_client::hyperos::{
 use crossbeam_channel::{Receiver, Sender, unbounded};
 use eframe::egui;
 
+use crate::i18n;
 use crate::theme::colors;
 use crate::ui_elements;
 
@@ -416,7 +417,7 @@ impl HyperOsDialog {
         }
 
         let mut open = self.open;
-        egui::Window::new("HyperOS China Fix & Việt Hóa")
+        egui::Window::new(i18n::t("hyperos.window_title"))
             .open(&mut open)
             .default_width(920.0)
             .default_height(720.0)
@@ -429,10 +430,10 @@ impl HyperOsDialog {
                     ui,
                     &mut self.active_tab,
                     &[
-                        (HyperOsTab::Notifications, "1. Fix Thông báo (FCM)"),
-                        (HyperOsTab::LocaleAndTheme, "2. Việt hóa & Theme MTZ"),
-                        (HyperOsTab::Debloat, "3. Gỡ App rác TQ"),
-                        (HyperOsTab::BankLock, "4. Khóa Bảo mật (Bank-Ready)"),
+                        (HyperOsTab::Notifications, i18n::t("hyperos.tab_notifications")),
+                        (HyperOsTab::LocaleAndTheme, i18n::t("hyperos.tab_locale_theme")),
+                        (HyperOsTab::Debloat, i18n::t("hyperos.tab_debloat")),
+                        (HyperOsTab::BankLock, i18n::t("hyperos.tab_bank_lock")),
                     ],
                 );
                 ui.add_space(6.0);
@@ -967,10 +968,10 @@ impl HyperOsDialog {
                     );
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.small_button("Xóa log").clicked() {
+                    if ui.small_button(i18n::t("common.clear_log")).clicked() {
                         self.log.clear();
                     }
-                    if ui.small_button("Copy log").clicked() {
+                    if ui.small_button(i18n::t("common.copy_log")).clicked() {
                         ctx.copy_text(self.log.clone());
                     }
                 });

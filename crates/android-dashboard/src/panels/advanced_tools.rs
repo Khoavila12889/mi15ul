@@ -1,3 +1,4 @@
+use crate::i18n;
 use crate::theme::colors;
 use crate::ui_elements;
 use crossbeam_channel::Receiver;
@@ -110,7 +111,10 @@ pub(super) fn run_report(
         .stdout(file)
         .stderr(stderr)
         .spawn()
-        .map_err(|e| format!("Cannot start ADB: {e}"))?;
+        .map_err(|e| {
+            let err_s = e.to_string();
+            i18n::tf("advanced.cannot_start_adb", &[("err", &err_s)])
+        })?;
     let start = Instant::now();
     let status = loop {
         match child.try_wait() {
@@ -119,9 +123,11 @@ pub(super) fn run_report(
             other => {
                 let _ = child.kill();
                 let _ = child.wait();
-                return Err(format!(
-                    "Command stopped (timeout or process error: {other:?}). Partial output: {}",
-                    path.display()
+                let err_s = format!("{other:?}");
+                let p_s = path.display().to_string();
+                return Err(i18n::tf(
+                    "advanced.cmd_stopped",
+                    &[("err", &err_s), ("path", &p_s)],
                 ));
             }
         }
@@ -134,12 +140,18 @@ pub(super) fn run_report(
         .map_err(|e| e.to_string())?;
     let text = String::from_utf8_lossy(&bytes);
     if !status.success() {
-        return Err(format!(
-            "ADB failed ({status}):\n{text}\nLog: {}",
-            path.display()
+        let st_s = status.to_string();
+        let p_s = path.display().to_string();
+        return Err(i18n::tf(
+            "advanced.adb_failed",
+            &[("status", &st_s), ("text", &text), ("path", &p_s)],
         ));
     }
-    Ok(format!("Saved: {}\n\n{text}", path.display()))
+    let p_s = path.display().to_string();
+    Ok(i18n::tf(
+        "advanced.saved_report",
+        &[("path", &p_s), ("text", &text)],
+    ))
 }
 impl AdvancedTools {
     pub fn tool_paths(&self) -> (&str, &str) {
@@ -152,7 +164,7 @@ impl AdvancedTools {
         let name = name.to_owned();
         let (tx, rx) = crossbeam_channel::bounded(1);
         self.result = Some(rx);
-        self.output = format!("Running {name} on {serial}…");
+        self.output = i18n::tf("advanced.running", &[("name", &name), ("serial", &serial)]);
         std::thread::spawn(move || {
             let result = (|| {
                 fs::create_dir_all(reports_dir()).map_err(|e| e.to_string())?;
@@ -165,7 +177,7 @@ impl AdvancedTools {
             })();
             let _ = tx.send(ResultMessage {
                 serial,
-                text: result.unwrap_or_else(|e| format!("Error: {e}")),
+                text: result.unwrap_or_else(|e| i18n::tf("common.error_prefix", &[("err", &e)])),
             });
         });
     }
@@ -180,11 +192,14 @@ impl AdvancedTools {
         if let Some(rx) = &self.result {
             match rx.try_recv() {
                 Ok(r) => {
-                    self.output = format!("Device: {}\n{}", r.serial, r.text);
+                    self.output = i18n::tf(
+                        "advanced.device_line",
+                        &[("serial", &r.serial), ("text", &r.text)],
+                    );
                     self.result = None;
                 }
                 Err(crossbeam_channel::TryRecvError::Disconnected) => {
-                    self.output = "Tool worker disconnected.".into();
+                    self.output = i18n::t("advanced.worker_disconnected").into();
                     self.result = None;
                 }
                 _ => {
@@ -194,7 +209,8 @@ impl AdvancedTools {
         }
         if let Some(child) = &mut self.mirror {
             if let Ok(Some(status)) = child.try_wait() {
-                self.output = format!("scrcpy ended ({status}). See scrcpy log in reports folder.");
+                let st_s = status.to_string();
+                self.output = i18n::tf("advanced.scrcpy_ended", &[("status", &st_s)]);
                 self.mirror = None;
             }
         }
@@ -202,172 +218,290 @@ impl AdvancedTools {
             return;
         }
         let mut open = self.open;
-        egui::Window::new("Advanced Tools").open(&mut open).default_width(820.0).default_height(680.0).vscroll(true).show(ctx, |ui| {
-            ui_elements::tool_card(ui, |ui| {
-                ui.horizontal_wrapped(|ui| {
-                    ui_elements::section_header(
-                        ui,
-                        "Android Workspace",
-                        "Công cụ điều khiển, cài APK, Flash ROM & chẩn đoán thiết bị cục bộ",
-                    );
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if let Some(s) = serial {
-                            ui_elements::status_pill(ui, &format!("● {s}"), colors::ACCENT_GREEN);
-                        } else {
-                            ui_elements::status_pill(ui, "○ Chưa chọn thiết bị", colors::ACCENT_AMBER);
-                        }
+        egui::Window::new(i18n::t("advanced.title"))
+            .open(&mut open)
+            .default_width(820.0)
+            .default_height(680.0)
+            .vscroll(true)
+            .show(ctx, |ui| {
+                ui_elements::tool_card(ui, |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        ui_elements::section_header(
+                            ui,
+                            i18n::t("advanced.workspace_title"),
+                            i18n::t("advanced.workspace_sub"),
+                        );
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if let Some(s) = serial {
+                                ui_elements::status_pill(
+                                    ui,
+                                    &format!("● {s}"),
+                                    colors::ACCENT_GREEN,
+                                );
+                            } else {
+                                ui_elements::status_pill(
+                                    ui,
+                                    i18n::t("advanced.no_device_pill"),
+                                    colors::ACCENT_AMBER,
+                                );
+                            }
+                        });
                     });
                 });
-            });
-            ui.add_space(6.0);
-            ui_elements::tool_card(ui, |ui| {
-                egui::CollapsingHeader::new("Quick APK Installer (PC → Android)")
-                    .default_open(apk.is_busy() || apk.queue_len() > 0)
-                    .show(ui, |ui| {
-                        apk.render_embedded_card(ui, ctx);
+                ui.add_space(6.0);
+                ui_elements::tool_card(ui, |ui| {
+                    egui::CollapsingHeader::new(i18n::t("advanced.header_apk"))
+                        .default_open(apk.is_busy() || apk.queue_len() > 0)
+                        .show(ui, |ui| {
+                            apk.render_embedded_card(ui, ctx);
+                        });
+                });
+                ui.add_space(6.0);
+                ui_elements::tool_card(ui, |ui| {
+                    egui::CollapsingHeader::new(i18n::t("advanced.header_stock"))
+                        .default_open(flash.is_busy())
+                        .show(ui, |ui| {
+                            flash.render_embedded_stock_module(ui, ctx);
+                        });
+                });
+                ui.add_space(6.0);
+                ui_elements::tool_card(ui, |ui| {
+                    self.zalo.show(ui, serial, &self.config.adb);
+                });
+                ui.add_space(6.0);
+                ui_elements::tool_card(ui, |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        ui_elements::section_header(
+                            ui,
+                            i18n::t("advanced.hyperos_title"),
+                            i18n::t("advanced.hyperos_sub"),
+                        );
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui_elements::accent_button(
+                                ui,
+                                i18n::t("advanced.hyperos_open"),
+                                colors::ACCENT_BLUE,
+                            )
+                            .clicked()
+                            {
+                                hyperos.open = true;
+                            }
+                        });
                     });
-            });
-            ui.add_space(6.0);
-            ui_elements::tool_card(ui, |ui| {
-                egui::CollapsingHeader::new("Stock ROM Flash & Bootloader Lock (Fastboot)")
-                    .default_open(flash.is_busy())
-                    .show(ui, |ui| {
-                        flash.render_embedded_stock_module(ui, ctx);
-                    });
-            });
-            ui.add_space(6.0);
-            ui_elements::tool_card(ui, |ui| {
-                self.zalo.show(ui, serial, &self.config.adb);
-            });
-            ui.add_space(6.0);
-            ui_elements::tool_card(ui, |ui| {
-                ui.horizontal_wrapped(|ui| {
+                });
+                ui.add_space(6.0);
+                ui_elements::tool_card(ui, |ui| {
                     ui_elements::section_header(
                         ui,
-                        "HyperOS China Fix & Việt Hóa",
-                        "Fix thông báo chậm (MILLET/FCM), Việt hóa Locale + MTZ, Safe Debloat User 0 & Khóa bảo mật Bank/VNeID",
+                        i18n::t("advanced.scrcpy_title"),
+                        i18n::t("advanced.scrcpy_sub"),
                     );
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.add_space(4.0);
+                    ui.horizontal_wrapped(|ui| {
+                        if ui
+                            .add_enabled_ui(serial.is_some() && self.mirror.is_none(), |ui| {
+                                ui_elements::accent_button(
+                                    ui,
+                                    i18n::t("advanced.scrcpy_open"),
+                                    colors::ACCENT_BLUE,
+                                )
+                            })
+                            .inner
+                            .clicked()
+                        {
+                            let s = serial.unwrap();
+                            let result = (|| -> Result<Child, std::io::Error> {
+                                fs::create_dir_all(reports_dir())?;
+                                let log = File::create(reports_dir().join("scrcpy.log"))?;
+                                let err = log.try_clone()?;
+                                command(&self.config.scrcpy)
+                                    .env("ADB", &self.config.adb)
+                                    .args(["--serial", s, "--max-size", "1280", "--max-fps", "30"])
+                                    .stdin(Stdio::null())
+                                    .stdout(log)
+                                    .stderr(err)
+                                    .spawn()
+                            })();
+                            match result {
+                                Ok(c) => {
+                                    self.mirror = Some(c);
+                                    self.mirror_device = s.into();
+                                    self.output = i18n::tf(
+                                        "advanced.scrcpy_started",
+                                        &[("serial", s)],
+                                    );
+                                }
+                                Err(e) => {
+                                    let err_s = e.to_string();
+                                    self.output = i18n::tf(
+                                        "advanced.scrcpy_err",
+                                        &[("err", &err_s)],
+                                    );
+                                }
+                            }
+                        }
+                        if ui
+                            .add_enabled_ui(self.mirror.is_some(), |ui| {
+                                ui_elements::accent_button(
+                                    ui,
+                                    i18n::t("advanced.scrcpy_stop"),
+                                    colors::ACCENT_RED,
+                                )
+                            })
+                            .inner
+                            .clicked()
+                        {
+                            if let Some(mut child) = self.mirror.take() {
+                                let _ = child.kill();
+                                let _ = child.wait();
+                            }
+                        }
+                        ui.hyperlink_to(
+                            i18n::t("advanced.scrcpy_link"),
+                            "https://github.com/Genymobile/scrcpy",
+                        );
+                    });
+                    if self.mirror.is_some() {
+                        ui.add_space(2.0);
+                        ui_elements::status_pill(
+                            ui,
+                            &i18n::tf(
+                                "advanced.scrcpy_mirroring",
+                                &[("serial", &self.mirror_device)],
+                            ),
+                            colors::ACCENT_GREEN,
+                        );
+                    }
+                });
+                ui.add_space(6.0);
+                ui_elements::tool_card(ui, |ui| {
+                    ui_elements::section_header(
+                        ui,
+                        i18n::t("advanced.diag_title"),
+                        i18n::t("advanced.diag_sub"),
+                    );
+                    ui.add_space(4.0);
+                    ui.add_enabled_ui(serial.is_some() && self.result.is_none(), |ui| {
+                        ui.horizontal_wrapped(|ui| {
+                            for (label, name, cmd) in [
+                                (i18n::t("advanced.diag_cpu"), "cpu", "top -b -n 1 -m 20"),
+                                (i18n::t("advanced.diag_mem"), "memory", "dumpsys meminfo"),
+                                (i18n::t("advanced.diag_battery"), "battery", "dumpsys battery"),
+                                (i18n::t("advanced.diag_storage"), "storage", "df -h /data /sdcard"),
+                                (i18n::t("advanced.diag_apps"), "packages", "pm list packages -i"),
+                            ] {
+                                if ui.button(label).clicked() {
+                                    self.start(
+                                        serial.unwrap(),
+                                        name,
+                                        vec!["shell".into(), cmd.into()],
+                                        30,
+                                    );
+                                }
+                            }
+                        });
+                        ui.add_space(4.0);
+                        ui.horizontal_wrapped(|ui| {
+                            ui.label(i18n::t("advanced.package_label"));
+                            ui.text_edit_singleline(&mut self.package);
+                            if ui
+                                .add_enabled(
+                                    valid_package(&self.package),
+                                    egui::Button::new(i18n::t("advanced.inspect_pkg")),
+                                )
+                                .clicked()
+                            {
+                                self.start(
+                                    serial.unwrap(),
+                                    "package",
+                                    vec![
+                                        "shell".into(),
+                                        "dumpsys".into(),
+                                        "package".into(),
+                                        self.package.clone(),
+                                    ],
+                                    30,
+                                );
+                            }
+                        });
+                    });
+                    if self.result.is_some() {
+                        ui.horizontal(|ui| {
+                            ui.spinner();
+                            ui.label(i18n::t("advanced.collecting"));
+                        });
+                    }
+                });
+                ui.add_space(6.0);
+                ui_elements::tool_card(ui, |ui| {
+                    ui.collapsing(i18n::t("advanced.paths_header"), |ui| {
+                        ui.label(i18n::t("advanced.path_adb"));
+                        ui.text_edit_singleline(&mut self.config.adb);
+                        ui.label(i18n::t("advanced.path_fastboot"));
+                        ui.text_edit_singleline(&mut self.config.fastboot);
+                        ui.label(i18n::t("advanced.path_scrcpy"));
+                        ui.text_edit_singleline(&mut self.config.scrcpy);
+                        ui.add_space(4.0);
                         if ui_elements::accent_button(
                             ui,
-                            "Mở HyperOS China Fix & Việt Hóa…",
+                            i18n::t("advanced.save_paths"),
                             colors::ACCENT_BLUE,
                         )
                         .clicked()
                         {
-                            hyperos.open = true;
+                            flash.sync_tool_paths(&self.config.adb, &self.config.fastboot);
+                            apk.sync_adb_path(&self.config.adb);
+                            hyperos.sync_adb_path(&self.config.adb);
+                            let result = (|| -> Result<(), Box<dyn std::error::Error>> {
+                                let path = config_file();
+                                fs::create_dir_all(path.parent().unwrap())?;
+                                fs::write(path, serde_json::to_vec_pretty(&self.config)?)?;
+                                Ok(())
+                            })();
+                            self.output = match result {
+                                Ok(()) => i18n::t("advanced.paths_saved").into(),
+                                Err(e) => e.to_string(),
+                            };
                         }
                     });
-                });
-            });
-            ui.add_space(6.0);
-            ui_elements::tool_card(ui, |ui| {
-                ui_elements::section_header(
-                    ui,
-                    "Screen Control (scrcpy)",
-                    "Phản chiếu & điều khiển màn hình điện thoại trên PC",
-                );
-                ui.add_space(4.0);
-                ui.horizontal_wrapped(|ui| {
-                    if ui
-                        .add_enabled_ui(serial.is_some() && self.mirror.is_none(), |ui| {
-                            ui_elements::accent_button(ui, "Open scrcpy", colors::ACCENT_BLUE)
-                        })
-                        .inner
-                        .clicked()
-                    {
-                        let s = serial.unwrap();
-                        let result = (|| -> Result<Child, std::io::Error> {
-                            fs::create_dir_all(reports_dir())?;
-                            let log = File::create(reports_dir().join("scrcpy.log"))?;
-                            let err = log.try_clone()?;
-                            command(&self.config.scrcpy).env("ADB", &self.config.adb).args(["--serial", s, "--max-size", "1280", "--max-fps", "30"])
-                                .stdin(Stdio::null()).stdout(log).stderr(err).spawn()
-                        })();
-                        match result { Ok(c) => { self.mirror = Some(c); self.mirror_device = s.into(); self.output = format!("scrcpy started for {s}."); }, Err(e) => self.output = format!("Cannot open scrcpy: {e}. Install it from the official repository and set its path above.") }
-                    }
-                    if ui
-                        .add_enabled_ui(self.mirror.is_some(), |ui| {
-                            ui_elements::accent_button(ui, "Stop scrcpy", colors::ACCENT_RED)
-                        })
-                        .inner
-                        .clicked()
-                    {
-                        if let Some(mut child) = self.mirror.take() { let _ = child.kill(); let _ = child.wait(); }
-                    }
-                    ui.hyperlink_to("scrcpy repository / download", "https://github.com/Genymobile/scrcpy");
-                });
-                if self.mirror.is_some() {
-                    ui.add_space(2.0);
-                    ui_elements::status_pill(
-                        ui,
-                        &format!("Mirroring: {}", self.mirror_device),
-                        colors::ACCENT_GREEN,
-                    );
-                }
-            });
-            ui.add_space(6.0);
-            ui_elements::tool_card(ui, |ui| {
-                ui_elements::section_header(
-                    ui,
-                    "Diagnostics & Development",
-                    "Thu thập thông số hệ thống / quyền ứng dụng một lần qua ADB",
-                );
-                ui.add_space(4.0);
-                ui.add_enabled_ui(serial.is_some() && self.result.is_none(), |ui| {
-                    ui.horizontal_wrapped(|ui| {
-                        for (label, name, cmd) in [
-                            ("CPU / processes", "cpu", "top -b -n 1 -m 20"),
-                            ("Memory", "memory", "dumpsys meminfo"),
-                            ("Battery", "battery", "dumpsys battery"),
-                            ("Storage", "storage", "df -h /data /sdcard"),
-                            ("Installed apps", "packages", "pm list packages -i"),
+                    ui.collapsing(i18n::t("advanced.repos_header"), |ui| {
+                        for (name, description, url) in [
+                            ("JADX", i18n::t("advanced.repo_jadx"), "https://github.com/skylot/jadx"),
+                            ("Perfetto", i18n::t("advanced.repo_perfetto"), "https://github.com/google/perfetto"),
+                            ("UAD-ng", i18n::t("advanced.repo_uad"), "https://github.com/Universal-Debloater-Alliance/universal-android-debloater-next-generation"),
+                            ("MobSF", i18n::t("advanced.repo_mobsf"), "https://github.com/MobSF/Mobile-Security-Framework-MobSF"),
+                            ("Androguard", i18n::t("advanced.repo_androguard"), "https://github.com/androguard/androguard"),
+                            ("Canta", i18n::t("advanced.repo_canta"), "https://github.com/samolego/Canta"),
                         ] {
-                            if ui.button(label).clicked() { self.start(serial.unwrap(), name, vec!["shell".into(), cmd.into()], 30); }
+                            ui.hyperlink_to(name, url);
+                            ui.small(description);
+                            ui.add_space(6.0);
                         }
                     });
-                    ui.add_space(4.0);
+                });
+                ui.add_space(6.0);
+                ui_elements::tool_card(ui, |ui| {
                     ui.horizontal_wrapped(|ui| {
-                        ui.label("Package"); ui.text_edit_singleline(&mut self.package);
-                        if ui.add_enabled(valid_package(&self.package), egui::Button::new("Inspect permissions / app")).clicked() {
-                            self.start(serial.unwrap(), "package", vec!["shell".into(), "dumpsys".into(), "package".into(), self.package.clone()], 30);
+                        ui.label(egui::RichText::new(i18n::t("advanced.latest_result")).strong());
+                        if ui.button(i18n::t("advanced.copy_result")).clicked() {
+                            ctx.copy_text(self.output.clone());
                         }
+                        let dir_s = reports_dir().display().to_string();
+                        ui.small(i18n::tf("advanced.reports_dir", &[("path", &dir_s)]));
                     });
-                });
-                if self.result.is_some() { ui.horizontal(|ui| { ui.spinner(); ui.label("Collecting report… (up to 30 seconds)"); }); }
-            });
-            ui.add_space(6.0);
-            ui_elements::tool_card(ui, |ui| {
-                ui.collapsing("Tool paths", |ui| {
-                    ui.label("ADB executable"); ui.text_edit_singleline(&mut self.config.adb);
-                    ui.label("fastboot executable"); ui.text_edit_singleline(&mut self.config.fastboot);
-                    ui.label("scrcpy executable (install separately, then enter full path)"); ui.text_edit_singleline(&mut self.config.scrcpy);
-                    ui.add_space(4.0);
-                    if ui_elements::accent_button(ui, "Save paths", colors::ACCENT_BLUE).clicked() {
-                        flash.sync_tool_paths(&self.config.adb, &self.config.fastboot);
-                        apk.sync_adb_path(&self.config.adb);
-                        hyperos.sync_adb_path(&self.config.adb);
-                        let result = (|| -> Result<(), Box<dyn std::error::Error>> { let path = config_file(); fs::create_dir_all(path.parent().unwrap())?; fs::write(path, serde_json::to_vec_pretty(&self.config)?)?; Ok(()) })();
-                        self.output = match result { Ok(()) => "Tool paths saved.".into(), Err(e) => e.to_string() };
-                    }
-                });
-                ui.collapsing("Repository library — install / integrate separately", |ui| {
-                    for (name, description, url) in [
-                        ("JADX", "Inspect APK / DEX Java code and resources", "https://github.com/skylot/jadx"),
-                        ("Perfetto", "Trace CPU scheduling, performance and latency", "https://github.com/google/perfetto"),
-                        ("UAD-ng", "Community package descriptions and debloat workflow", "https://github.com/Universal-Debloater-Alliance/universal-android-debloater-next-generation"),
-                        ("MobSF", "Static / dynamic mobile app security analysis", "https://github.com/MobSF/Mobile-Security-Framework-MobSF"),
-                        ("Androguard", "Programmatic APK / DEX analysis", "https://github.com/androguard/androguard"),
-                        ("Canta", "On-device debloat using Shizuku", "https://github.com/samolego/Canta"),
-                    ] { ui.hyperlink_to(name, url); ui.small(description); ui.add_space(6.0); }
+                    egui::ScrollArea::both()
+                        .id_salt("advanced_tools_result")
+                        .max_height(240.0)
+                        .show(ui, |ui| {
+                            ui.add(
+                                egui::TextEdit::multiline(&mut self.output)
+                                    .font(egui::TextStyle::Monospace)
+                                    .desired_width(f32::INFINITY)
+                                    .desired_rows(8),
+                            );
+                        });
                 });
             });
-            ui.add_space(6.0);
-            ui_elements::tool_card(ui, |ui| {
-                ui.horizontal_wrapped(|ui| { ui.label(egui::RichText::new("Latest result").strong()); if ui.button("Copy result").clicked() { ctx.copy_text(self.output.clone()); } ui.small(format!("Reports: {}", reports_dir().display())); });
-                egui::ScrollArea::both().id_salt("advanced_tools_result").max_height(240.0).show(ui, |ui| { ui.add(egui::TextEdit::multiline(&mut self.output).font(egui::TextStyle::Monospace).desired_width(f32::INFINITY).desired_rows(8)); });
-            });
-        });
         self.open = open;
     }
 }

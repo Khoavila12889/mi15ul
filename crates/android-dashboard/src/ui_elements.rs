@@ -4,6 +4,7 @@ use std::time::Instant;
 
 use eframe::egui::{self, Context, FontFamily, FontId, TextStyle, Ui};
 
+use crate::i18n;
 use crate::theme::{self, colors};
 
 /// Show an error label using the current text color (panel body color when inside [`panel_body`]).
@@ -81,7 +82,7 @@ pub fn title_bar(ctx: &Context, frame: &eframe::Frame) -> TitleBarAction {
             ui.painter().text(
                 rect.center(),
                 egui::Align2::CENTER_CENTER,
-                "Android Debug Dashboard",
+                i18n::t("app.title"),
                 FontId::new(theme::FONT_BODY, FontFamily::Proportional),
                 colors::OFF_WHITE,
             );
@@ -106,17 +107,17 @@ pub fn title_bar(ctx: &Context, frame: &eframe::Frame) -> TitleBarAction {
                         ui,
                         egui::Button::image(image).frame(false),
                         |ui| {
-                            if ui.button("Configure AI Provider").clicked() {
+                            if ui.button(i18n::t("ui.menu.configure_ai")).clicked() {
                                 action.open_ai_settings = true;
                                 ui.close_menu();
                             }
-                            if ui.button("Reset Dashboard Layout").clicked() {
+                            if ui.button(i18n::t("ui.menu.reset_layout")).clicked() {
                                 action.reset_layout = true;
                                 ui.close_menu();
                             }
                         },
                     );
-                    menu.response.on_hover_text("Settings");
+                    menu.response.on_hover_text(i18n::t("ui.menu.settings"));
                 });
             });
 
@@ -300,7 +301,7 @@ pub fn tag_filter_input(
             ui.add(
                 egui::TextEdit::singleline(text)
                     .hint_text(
-                        egui::RichText::new("Type tag and press enter")
+                        egui::RichText::new(i18n::t("ui.tag_hint"))
                             .color(colors::PLACEHOLDER_TEXT),
                     )
                     .font(FontId::new(theme::FONT_SMALL, FontFamily::Proportional))
@@ -340,7 +341,7 @@ pub fn tag_filter_badge(ui: &mut Ui, label: &str, bg: egui::Color32, fg: egui::C
                 ui.label(egui::RichText::new(label).color(fg).monospace());
                 if ui
                     .small_button("×")
-                    .on_hover_text("Remove tag filter")
+                    .on_hover_text(i18n::t("ui.tag_remove_hover"))
                     .clicked()
                 {
                     remove = true;
@@ -375,7 +376,7 @@ pub fn tag_filter_row(
 }
 
 pub fn panel_loading(ui: &mut Ui) {
-    ui.label("Loading...");
+    ui.label(i18n::t("common.loading"));
 }
 
 /// One chrome for every panel: uniform padding on all four sides, title, then body.
@@ -553,18 +554,19 @@ pub fn panel_footer(
 ) {
     footer_bar(ui, |ui| {
         let stream_label = if *auto_scroll {
-            "Stream: Active"
+            i18n::t("ui.footer.stream_active")
         } else {
-            "Stream: Paused"
+            i18n::t("ui.footer.stream_paused")
         };
         let timestamp_label = show_timestamps.as_ref().map(|show| {
             if **show {
-                "Timestamp: On"
+                i18n::t("ui.footer.timestamp_on")
             } else {
-                "Timestamp: Off"
+                i18n::t("ui.footer.timestamp_off")
             }
         });
-        let lines_label = format!("Lines: {line_count}");
+        let count_str = line_count.to_string();
+        let lines_label = i18n::tf("ui.footer.lines", &[("count", &count_str)]);
 
         let gap = ui.spacing().item_spacing.x;
         let timestamp_w = timestamp_label.map(|label| footer_label_width(ui, label));
@@ -591,12 +593,22 @@ pub fn panel_footer(
                 egui::vec2(ui.available_width(), ui.available_height()),
                 egui::Layout::right_to_left(egui::Align::Center),
                 |ui| {
-                    footer_toggle(ui, stream_label, "Toggle logcat updates", auto_scroll);
+                    footer_toggle(
+                        ui,
+                        stream_label,
+                        i18n::t("ui.footer.stream_hover"),
+                        auto_scroll,
+                    );
                     if show_timestamp {
                         if let (Some(label), Some(show_timestamps)) =
                             (timestamp_label, show_timestamps)
                         {
-                            footer_toggle(ui, label, "Toggle timestamps", show_timestamps);
+                            footer_toggle(
+                                ui,
+                                label,
+                                i18n::t("ui.footer.timestamp_hover"),
+                                show_timestamps,
+                            );
                         }
                     }
                 },
@@ -617,7 +629,7 @@ pub fn devices_footer(
         ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
             if list_job_in_flight {
                 ui.label(
-                    egui::RichText::new("Refreshing…")
+                    egui::RichText::new(i18n::t("ui.devices.refreshing"))
                         .small()
                         .color(colors::FOOTER_TEXT),
                 );
@@ -632,7 +644,11 @@ pub fn devices_footer(
                 egui::vec2(ui.available_width(), ui.available_height()),
                 egui::Layout::right_to_left(egui::Align::Center),
                 |ui| {
-                    refresh = footer_action(ui, "Check ADB", "Refresh connections and verify that online devices respond to an ADB shell command");
+                    refresh = footer_action(
+                        ui,
+                        i18n::t("ui.devices.check_adb"),
+                        i18n::t("ui.devices.check_adb_hover"),
+                    );
                 },
             );
         });
@@ -643,10 +659,16 @@ pub fn devices_footer(
 fn refresh_age_label(at: Instant) -> String {
     let secs = at.elapsed().as_secs();
     match secs {
-        0 => "Updated just now".to_string(),
-        1 => "Updated 1s ago".to_string(),
-        s if s < 60 => format!("Updated {s}s ago"),
-        s => format!("Updated {}m ago", s / 60),
+        0 => i18n::t("ui.devices.updated_now").to_string(),
+        1 => i18n::t("ui.devices.updated_1s").to_string(),
+        s if s < 60 => {
+            let n = s.to_string();
+            i18n::tf("ui.devices.updated_secs", &[("n", &n)])
+        }
+        s => {
+            let n = (s / 60).to_string();
+            i18n::tf("ui.devices.updated_mins", &[("n", &n)])
+        }
     }
 }
 

@@ -3,6 +3,7 @@ use egui_tiles::{Behavior, ResizeState, TileId, Tree, UiResponse};
 use serde::{Deserialize, Serialize};
 
 use crate::app::App;
+use crate::i18n;
 use crate::panels;
 use crate::panels::devices::DevicesAction;
 use crate::theme;
@@ -59,15 +60,15 @@ impl PanelId {
 
     fn title(self) -> &'static str {
         match self {
-            PanelId::Devices => "Devices",
-            PanelId::Ram => "RAM",
-            PanelId::Storage => "Storage",
-            PanelId::LogcatAll => "Logcat",
-            PanelId::LogcatErrors => "Logcat Errors",
-            PanelId::Insight => "Insight",
-            PanelId::SystemStats => "Storage Details",
-            PanelId::Network => "Network Activity",
-            PanelId::Protocols => "App Traffic",
+            PanelId::Devices => i18n::t("panel.devices"),
+            PanelId::Ram => i18n::t("panel.ram"),
+            PanelId::Storage => i18n::t("panel.storage"),
+            PanelId::LogcatAll => i18n::t("panel.logcat"),
+            PanelId::LogcatErrors => i18n::t("panel.logcat_errors"),
+            PanelId::Insight => i18n::t("panel.insight"),
+            PanelId::SystemStats => i18n::t("panel.storage_details"),
+            PanelId::Network => i18n::t("panel.network"),
+            PanelId::Protocols => i18n::t("panel.app_traffic"),
         }
     }
 
@@ -275,8 +276,8 @@ impl Behavior<PanelId> for AppTilesBehavior<'_> {
                     |ui| {
                         if ui_elements::header_action(
                             ui,
-                            "Configure…",
-                            "Set the AI provider, model, and API key",
+                            i18n::t("panel.action.configure"),
+                            i18n::t("panel.action.configure_hover"),
                         ) {
                             self.app.settings.open_from(self.app.insight.config());
                         }
@@ -328,15 +329,15 @@ impl Behavior<PanelId> for AppTilesBehavior<'_> {
                     |ui| {
                         if ui_elements::header_action(
                             ui,
-                            "Backup / Transfer…",
-                            "Browse phone and PC folders; copy in either direction",
+                            i18n::t("panel.action.backup"),
+                            i18n::t("panel.action.backup_hover"),
                         ) {
                             self.app.backup.open = true;
                         }
                         if ui_elements::header_action(
                             ui,
-                            "Clean up…",
-                            "Uninstall unused or junk apps",
+                            i18n::t("panel.action.cleanup"),
+                            i18n::t("panel.action.cleanup_hover"),
                         ) {
                             self.app.cleanup.open();
                         }

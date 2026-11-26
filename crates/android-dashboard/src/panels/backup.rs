@@ -1,3 +1,4 @@
+use crate::i18n;
 use adb_client::transfer::{
     self, RemoteFolder, TransferDirection, TransferEvent, TransferJob, TransferRequest,
 };
@@ -27,6 +28,7 @@ pub struct BackupDialog {
     status: String,
     output: String,
     error: bool,
+    local_missing: bool,
     manifest: Option<PathBuf>,
 }
 
@@ -48,9 +50,10 @@ impl Default for BackupDialog {
             request: None,
             started: None,
             compression: true,
-            status: "Choose folders, then copy in either direction.".into(),
+            status: i18n::t("backup.default_status").into(),
             output: String::new(),
             error: false,
+            local_missing: false,
             manifest: None,
         }
     }
@@ -98,23 +101,24 @@ impl BackupDialog {
         }
         if !path.exists() {
             self.local_folders.clear();
-            self.status = format!(
-                "Folder '{}' does not exist yet (will be created automatically when backup starts).",
-                path.display()
-            );
+            let p_str = path.display().to_string();
+            self.status = i18n::tf("backup.folder_not_exist", &[("path", &p_str)]);
             self.error = false;
+            self.local_missing = true;
             return;
         }
         match transfer::local_folders(&path) {
             Ok(folders) => {
                 self.local_folders = folders;
-                if self.error && (self.status.contains("does not exist") || self.status.contains("os error")) {
+                if self.local_missing || (self.error && self.status.contains("os error")) {
                     self.error = false;
-                    self.status = "Choose folders, then copy in either direction.".into();
+                    self.local_missing = false;
+                    self.status = i18n::t("backup.default_status").into();
                 }
             }
             Err(error) => {
                 self.local_folders.clear();
+                self.local_missing = false;
                 self.fail(error);
             }
         }
@@ -173,8 +177,11 @@ impl BackupDialog {
                             path,
                             serde_json::to_vec_pretty(&record).unwrap_or_default(),
                         ) {
-                            self.status
-                                .push_str(&format!(" Manifest could not be saved: {e}"));
+                            let err_s = e.to_string();
+                            self.status.push_str(&i18n::tf(
+                                "backup.manifest_save_fail",
+                                &[("err", &err_s)],
+                            ));
                         }
                     }
                     self.refresh_local();
@@ -194,7 +201,7 @@ impl BackupDialog {
         }
         let local = PathBuf::from(&self.local);
         if !local.is_absolute() {
-            self.fail("Enter an absolute PC folder path".into());
+            self.fail(i18n::t("backup.err_abs_pc").into());
             return;
         }
         let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S-%3f").to_string();
@@ -208,19 +215,29 @@ impl BackupDialog {
         };
         if direction == TransferDirection::Pull {
             if let Err(e) = std::fs::create_dir_all(&local) {
-                self.fail(format!("Cannot create destination folder '{}': {e}", local.display()));
+                let p = local.display().to_string();
+                let err_s = e.to_string();
+                self.fail(i18n::tf(
+                    "backup.err_create_dest",
+                    &[("path", &p), ("err", &err_s)],
+                ));
                 return;
             }
             let snapshot = local.join(format!("backup-{token}"));
             if let Err(e) = std::fs::create_dir(&snapshot) {
-                self.fail(format!("Cannot create backup subfolder '{}': {e}", snapshot.display()));
+                let p = snapshot.display().to_string();
+                let err_s = e.to_string();
+                self.fail(i18n::tf(
+                    "backup.err_create_sub",
+                    &[("path", &p), ("err", &err_s)],
+                ));
                 return;
             }
             self.manifest = Some(snapshot.join("transfer-manifest.json"));
             request.local = snapshot;
         } else {
             if !local.is_dir() {
-                self.fail("Select an existing PC source folder".into());
+                self.fail(i18n::t("backup.err_pick_source").into());
                 return;
             }
             request.remote = format!("{}/from-pc-{token}", self.remote.trim_end_matches('/'));
@@ -237,21 +254,23 @@ impl BackupDialog {
         if let Some(path) = &self.manifest {
             let marker = serde_json::json!({"status":"incomplete", "device":request.serial, "phone":request.remote, "pc":request.local, "started_at":chrono::Local::now().to_rfc3339()});
             if let Err(e) = std::fs::write(path, marker.to_string()) {
-                self.fail(format!("Cannot write transfer manifest: {e}"));
+                let err_s = e.to_string();
+                self.fail(i18n::tf("backup.err_manifest", &[("err", &err_s)]));
                 return;
             }
         }
-        self.status = format!(
-            "Copying on {} → {}",
-            request.serial,
-            if direction == TransferDirection::Pull {
-                request.local.display().to_string()
-            } else {
-                request.remote.clone()
-            }
+        let dest_display = if direction == TransferDirection::Pull {
+            request.local.display().to_string()
+        } else {
+            request.remote.clone()
+        };
+        self.status = i18n::tf(
+            "backup.copying",
+            &[("serial", &request.serial), ("dest", &dest_display)],
         );
         self.output.clear();
         self.error = false;
+        self.local_missing = false;
         self.started = Some(Instant::now());
         self.job = Some(TransferJob::start(request.clone()));
         self.request = Some(request);
@@ -262,84 +281,211 @@ impl BackupDialog {
             return;
         }
         let mut open = self.open;
-        egui::Window::new("Backup & file transfer").open(&mut open).default_size([850.0, 620.0]).min_width(440.0).resizable(true).vscroll(true).show(ctx, |ui| {
-            ui.label(format!("Device: {}  |  ADB file sync", self.serial.as_deref().unwrap_or("No device selected")));
-            ui.label("Copy folders in either direction. Each copy creates a new destination folder.");
-            let busy = self.job.is_some();
-            ui.add_enabled_ui(!busy, |ui| {
-                ui.columns(2, |columns| {
-                    let ui = &mut columns[0];
-                    ui.heading("Phone folder");
-                    ui.add(egui::TextEdit::singleline(&mut self.remote).desired_width(f32::INFINITY));
-                    ui.horizontal_wrapped(|ui| {
-                        if ui.button("Up").clicked() {
-                            self.remote = self.remote.trim_end_matches('/').rsplit_once('/').map(|(p,_)| if p.is_empty() {"/"} else {p}).unwrap_or("/").to_string(); self.refresh_remote();
+        egui::Window::new(i18n::t("backup.title"))
+            .open(&mut open)
+            .default_size([850.0, 620.0])
+            .min_width(440.0)
+            .resizable(true)
+            .vscroll(true)
+            .show(ctx, |ui| {
+                let dev = self
+                    .serial
+                    .as_deref()
+                    .unwrap_or_else(|| i18n::t("backup.no_device"));
+                ui.label(i18n::tf("backup.header", &[("device", dev)]));
+                ui.label(i18n::t("backup.subtitle"));
+                let busy = self.job.is_some();
+                ui.add_enabled_ui(!busy, |ui| {
+                    ui.columns(2, |columns| {
+                        let ui = &mut columns[0];
+                        ui.heading(i18n::t("backup.phone_folder"));
+                        ui.add(egui::TextEdit::singleline(&mut self.remote).desired_width(f32::INFINITY));
+                        ui.horizontal_wrapped(|ui| {
+                            if ui.button(i18n::t("backup.up")).clicked() {
+                                self.remote = self
+                                    .remote
+                                    .trim_end_matches('/')
+                                    .rsplit_once('/')
+                                    .map(|(p, _)| if p.is_empty() { "/" } else { p })
+                                    .unwrap_or("/")
+                                    .to_string();
+                                self.refresh_remote();
+                            }
+                            if ui
+                                .add_enabled(
+                                    self.serial.is_some() && self.listing.is_none(),
+                                    egui::Button::new(i18n::t("backup.browse_refresh")),
+                                )
+                                .clicked()
+                            {
+                                self.refresh_remote();
+                            }
+                        });
+                        if self.listing.is_some() {
+                            ui.spinner();
                         }
-                        if ui.add_enabled(self.serial.is_some() && self.listing.is_none(), egui::Button::new("Browse / Refresh")).clicked() { self.refresh_remote(); }
-                    });
-                    if self.listing.is_some() { ui.spinner(); }
-                    let mut navigate = None;
-                    egui::ScrollArea::both().id_salt("phone_folders").max_height(210.0).auto_shrink([false,false]).show(ui, |ui| {
-                        for folder in &self.folders { if ui.selectable_label(false, format!("[Folder] {}", folder.name)).on_hover_text(&folder.path).clicked() { navigate = Some(folder.path.clone()); } }
-                    });
-                    if let Some(path) = navigate { self.remote = path; self.refresh_remote(); }
-                    let ui = &mut columns[1];
-                    ui.heading("PC folder");
-                    ui.add(egui::TextEdit::singleline(&mut self.local).desired_width(f32::INFINITY));
-                    ui.horizontal_wrapped(|ui| {
-                        if ui.button("Up").clicked() { if let Some(parent) = PathBuf::from(&self.local).parent() { self.local = parent.display().to_string(); self.refresh_local(); } }
-                        let mut drive = None;
-                        ui.menu_button("Drives", |ui| {
-                            for root in pc_roots() {
-                                if ui.button(root.display().to_string()).clicked() {
-                                    drive = Some(root);
-                                    ui.close_menu();
+                        let mut navigate = None;
+                        egui::ScrollArea::both()
+                            .id_salt("phone_folders")
+                            .max_height(210.0)
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| {
+                                for folder in &self.folders {
+                                    let label = i18n::tf(
+                                        "backup.folder_item",
+                                        &[("name", &folder.name)],
+                                    );
+                                    if ui
+                                        .selectable_label(false, label)
+                                        .on_hover_text(&folder.path)
+                                        .clicked()
+                                    {
+                                        navigate = Some(folder.path.clone());
+                                    }
+                                }
+                            });
+                        if let Some(path) = navigate {
+                            self.remote = path;
+                            self.refresh_remote();
+                        }
+                        let ui = &mut columns[1];
+                        ui.heading(i18n::t("backup.pc_folder"));
+                        ui.add(egui::TextEdit::singleline(&mut self.local).desired_width(f32::INFINITY));
+                        ui.horizontal_wrapped(|ui| {
+                            if ui.button(i18n::t("backup.up")).clicked() {
+                                if let Some(parent) = PathBuf::from(&self.local).parent() {
+                                    self.local = parent.display().to_string();
+                                    self.refresh_local();
+                                }
+                            }
+                            let mut drive = None;
+                            ui.menu_button(i18n::t("backup.drives"), |ui| {
+                                for root in pc_roots() {
+                                    if ui.button(root.display().to_string()).clicked() {
+                                        drive = Some(root);
+                                        ui.close_menu();
+                                    }
+                                }
+                            });
+                            if let Some(root) = drive {
+                                self.local = root.display().to_string();
+                                self.refresh_local();
+                            }
+                            if ui.button(i18n::t("backup.browse_refresh")).clicked() {
+                                self.refresh_local();
+                            }
+                            let local_p = PathBuf::from(&self.local);
+                            if local_p.is_absolute() && !local_p.exists() {
+                                if ui.button(i18n::t("backup.create_folder")).clicked() {
+                                    match std::fs::create_dir_all(&local_p) {
+                                        Ok(()) => {
+                                            let p = local_p.display().to_string();
+                                            self.status =
+                                                i18n::tf("backup.created_folder", &[("path", &p)]);
+                                            self.error = false;
+                                            self.local_missing = false;
+                                            self.refresh_local();
+                                        }
+                                        Err(e) => {
+                                            let err_s = e.to_string();
+                                            self.fail(i18n::tf(
+                                                "backup.err_create_folder",
+                                                &[("err", &err_s)],
+                                            ));
+                                        }
+                                    }
                                 }
                             }
                         });
-                        if let Some(root) = drive {
-                            self.local = root.display().to_string();
+                        let mut navigate = None;
+                        egui::ScrollArea::both()
+                            .id_salt("pc_folders")
+                            .max_height(210.0)
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| {
+                                for folder in &self.local_folders {
+                                    let name = folder
+                                        .file_name()
+                                        .unwrap_or_default()
+                                        .to_string_lossy();
+                                    let label =
+                                        i18n::tf("backup.folder_item", &[("name", &name)]);
+                                    if ui
+                                        .selectable_label(false, label)
+                                        .on_hover_text(folder.display().to_string())
+                                        .clicked()
+                                    {
+                                        navigate = Some(folder.display().to_string());
+                                    }
+                                }
+                            });
+                        if let Some(path) = navigate {
+                            self.local = path;
                             self.refresh_local();
                         }
-                        if ui.button("Browse / Refresh").clicked() { self.refresh_local(); }
-                        let local_p = PathBuf::from(&self.local);
-                        if local_p.is_absolute() && !local_p.exists() {
-                            if ui.button("Create folder").clicked() {
-                                match std::fs::create_dir_all(&local_p) {
-                                    Ok(()) => {
-                                        self.status = format!("Created folder '{}'", local_p.display());
-                                        self.error = false;
-                                        self.refresh_local();
-                                    }
-                                    Err(e) => self.fail(format!("Cannot create folder: {e}")),
-                                }
+                    });
+                    ui.checkbox(&mut self.compression, i18n::t("backup.compression"));
+                    ui.horizontal_wrapped(|ui| {
+                        if ui
+                            .add_enabled(
+                                self.serial.is_some(),
+                                egui::Button::new(i18n::t("backup.pull_btn")),
+                            )
+                            .clicked()
+                        {
+                            self.start(TransferDirection::Pull);
+                        }
+                        if ui
+                            .add_enabled(
+                                self.serial.is_some(),
+                                egui::Button::new(i18n::t("backup.push_btn")),
+                            )
+                            .clicked()
+                        {
+                            self.start(TransferDirection::Push);
+                        }
+                    });
+                    ui.small(i18n::t("backup.note"));
+                });
+                ui.separator();
+                if busy {
+                    ui.horizontal(|ui| {
+                        ui.spinner();
+                        let secs = format!(
+                            "{:.0}",
+                            self.started
+                                .map(|s| s.elapsed().as_secs_f64())
+                                .unwrap_or_default()
+                        );
+                        ui.label(i18n::tf("backup.transferring", &[("secs", &secs)]));
+                        if ui.button(i18n::t("backup.cancel")).clicked() {
+                            if let Some(job) = &self.job {
+                                job.cancel();
                             }
                         }
                     });
-                    let mut navigate = None;
-                    egui::ScrollArea::both().id_salt("pc_folders").max_height(210.0).auto_shrink([false,false]).show(ui, |ui| {
-                        for folder in &self.local_folders { if ui.selectable_label(false, format!("[Folder] {}", folder.file_name().unwrap_or_default().to_string_lossy())).on_hover_text(folder.display().to_string()).clicked() { navigate = Some(folder.display().to_string()); } }
+                    ctx.request_repaint_after(std::time::Duration::from_millis(100));
+                }
+                ui.colored_label(
+                    if self.error {
+                        egui::Color32::LIGHT_RED
+                    } else {
+                        egui::Color32::LIGHT_BLUE
+                    },
+                    &self.status,
+                );
+                if let Some(path) = &self.manifest {
+                    let p = path.display().to_string();
+                    ui.small(i18n::tf("backup.record", &[("path", &p)]));
+                }
+                egui::ScrollArea::vertical()
+                    .id_salt("transfer_output")
+                    .max_height(140.0)
+                    .stick_to_bottom(true)
+                    .show(ui, |ui| {
+                        ui.monospace(&self.output);
                     });
-                    if let Some(path) = navigate { self.local = path; self.refresh_local(); }
-                });
-                ui.checkbox(&mut self.compression, "Compression: auto negotiate (disable for already compressed media)");
-                ui.horizontal_wrapped(|ui| {
-                    if ui.add_enabled(self.serial.is_some(), egui::Button::new("Backup phone → PC")).clicked() { self.start(TransferDirection::Pull); }
-                    if ui.add_enabled(self.serial.is_some(), egui::Button::new("Copy PC → phone")).clicked() { self.start(TransferDirection::Push); }
-                });
-                ui.small("Copies only folders accessible to ADB. App-private data may require root. Source files are kept.");
             });
-            ui.separator();
-            if busy {
-                ui.horizontal(|ui| { ui.spinner(); ui.label(format!("Transferring · {:.0}s", self.started.map(|s| s.elapsed().as_secs_f64()).unwrap_or_default()));
-                    if ui.button("Cancel transfer").clicked() { if let Some(job) = &self.job { job.cancel(); } }
-                });
-                ctx.request_repaint_after(std::time::Duration::from_millis(100));
-            }
-            ui.colored_label(if self.error { egui::Color32::LIGHT_RED } else { egui::Color32::LIGHT_BLUE }, &self.status);
-            if let Some(path) = &self.manifest { ui.small(format!("Transfer record: {}", path.display())); }
-            egui::ScrollArea::vertical().id_salt("transfer_output").max_height(140.0).stick_to_bottom(true).show(ui, |ui| { ui.monospace(&self.output); });
-        });
         self.open = open;
     }
 }

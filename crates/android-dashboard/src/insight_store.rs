@@ -60,18 +60,19 @@ impl LocalCredentials {
     pub fn summary(&self) -> String {
         let mut found = Vec::new();
         if self.codex_chatgpt {
-            found.push("Codex (ChatGPT login)");
+            found.push(crate::i18n::t("settings.cred_codex_chatgpt"));
         }
         if self.codex_api_key.is_some() {
-            found.push("Codex API key");
+            found.push(crate::i18n::t("settings.cred_codex_api"));
         }
         if self.opencode_api_key.is_some() {
-            found.push("OpenCode API key");
+            found.push(crate::i18n::t("settings.cred_opencode_api"));
         }
         if found.is_empty() {
-            "No Codex or OpenCode login found on this machine.".to_string()
+            crate::i18n::t("settings.cred_none").to_string()
         } else {
-            format!("Found: {}.", found.join(", "))
+            let items = found.join(", ");
+            crate::i18n::tf("settings.cred_found", &[("items", &items)])
         }
     }
 }

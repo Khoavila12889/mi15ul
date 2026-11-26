@@ -7,6 +7,7 @@ use adb_client::apk::{
 use crossbeam_channel::{Receiver, Sender, unbounded};
 use eframe::egui;
 
+use crate::i18n;
 use crate::theme::colors;
 use crate::ui_elements;
 
@@ -272,7 +273,7 @@ impl ApkInstallerDialog {
         }
 
         let mut open = self.open;
-        egui::Window::new("APK Installer (PC → Android)")
+        egui::Window::new(i18n::t("apk.window_title"))
             .open(&mut open)
             .default_size([760.0, 620.0])
             .min_width(500.0)
@@ -370,10 +371,10 @@ impl ApkInstallerDialog {
                 .default_open(false)
                 .show(ui, |ui| {
                     ui.horizontal(|ui| {
-                        if ui.small_button("Copy Log").clicked() {
+                        if ui.small_button(i18n::t("common.copy_log")).clicked() {
                             ctx.copy_text(self.log.clone());
                         }
-                        if ui.small_button("Xóa Log").clicked() {
+                        if ui.small_button(i18n::t("common.clear_log")).clicked() {
                             self.log.clear();
                         }
                     });
@@ -474,7 +475,7 @@ impl ApkInstallerDialog {
                 ui.checkbox(&mut self.options.replace_existing, "Ghi đè / Cập nhật (-r)");
                 ui.checkbox(&mut self.options.grant_permissions, "Tự cấp quyền (-g)");
                 ui.checkbox(&mut self.options.allow_downgrade, "Hạ phiên bản (-d)");
-                ui.checkbox(&mut self.options.allow_test_packages, "Test APK (-t)");
+                ui.checkbox(&mut self.options.allow_test_packages, i18n::t("apk.flag_test"));
             });
         });
     }
@@ -533,7 +534,7 @@ impl ApkInstallerDialog {
                         ui.horizontal(|ui| {
                             let kind_label = match entry.info.kind {
                                 ApkKind::SingleApk => "APK",
-                                ApkKind::SplitBundle => "BUNDLE",
+                                ApkKind::SplitBundle => i18n::t("apk.kind_bundle"),
                             };
                             let kind_color = match entry.info.kind {
                                 ApkKind::SingleApk => colors::ACCENT_BLUE,
@@ -578,14 +579,15 @@ impl ApkInstallerDialog {
                                             elapsed_ms,
                                             split_count,
                                         } => {
+                                            let secs = format!("{:.1}", *elapsed_ms as f64 / 1000.0);
                                             let label = if *split_count > 1 {
-                                                format!(
-                                                    "OK ({:.1}s · {} split)",
-                                                    *elapsed_ms as f64 / 1000.0,
-                                                    split_count
+                                                let count = split_count.to_string();
+                                                i18n::tf(
+                                                    "apk.status_ok_split",
+                                                    &[("secs", &secs), ("count", &count)],
                                                 )
                                             } else {
-                                                format!("OK ({:.1}s)", *elapsed_ms as f64 / 1000.0)
+                                                i18n::tf("apk.status_ok", &[("secs", &secs)])
                                             };
                                             ui_elements::status_pill(
                                                 ui,
@@ -597,7 +599,7 @@ impl ApkInstallerDialog {
                                             ui.scope(|ui| {
                                                 ui_elements::status_pill(
                                                     ui,
-                                                    "Lỗi",
+                                                    i18n::t("apk.status_fail"),
                                                     colors::ACCENT_RED,
                                                 );
                                             })
@@ -760,14 +762,17 @@ fn native_pick_apk_files() -> Vec<PathBuf> {
     use std::os::windows::process::CommandExt;
     use std::process::{Command, Stdio};
 
-    let script = "Add-Type -AssemblyName System.Windows.Forms; \
+    let filter = i18n::t("apk.pick_files_filter");
+    let script = format!(
+        "Add-Type -AssemblyName System.Windows.Forms; \
         $d = New-Object System.Windows.Forms.OpenFileDialog; \
         $d.Multiselect = $true; \
-        $d.Filter = 'Android Packages (*.apk;*.apks;*.xapk;*.apkm)|*.apk;*.apks;*.xapk;*.apkm|All files (*.*)|*.*'; \
-        if ($d.ShowDialog() -eq 'OK') { $d.FileNames | ForEach-Object { [Console]::Out.WriteLine($_) } }";
+        $d.Filter = '{filter}'; \
+        if ($d.ShowDialog() -eq 'OK') {{ $d.FileNames | ForEach-Object {{ [Console]::Out.WriteLine($_) }} }}"
+    );
 
     let Ok(out) = Command::new("powershell")
-        .args(["-NoProfile", "-STA", "-Command", script])
+        .args(["-NoProfile", "-STA", "-Command", &script])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -797,13 +802,16 @@ fn native_pick_apk_folder() -> Option<PathBuf> {
     use std::os::windows::process::CommandExt;
     use std::process::{Command, Stdio};
 
-    let script = "Add-Type -AssemblyName System.Windows.Forms; \
+    let desc = i18n::t("apk.pick_folder_desc");
+    let script = format!(
+        "Add-Type -AssemblyName System.Windows.Forms; \
         $d = New-Object System.Windows.Forms.FolderBrowserDialog; \
-        $d.Description = 'Select folder containing APK / XAPK files'; \
-        if ($d.ShowDialog() -eq 'OK') { [Console]::Out.WriteLine($d.SelectedPath) }";
+        $d.Description = '{desc}'; \
+        if ($d.ShowDialog() -eq 'OK') {{ [Console]::Out.WriteLine($d.SelectedPath) }}"
+    );
 
     let out = Command::new("powershell")
-        .args(["-NoProfile", "-STA", "-Command", script])
+        .args(["-NoProfile", "-STA", "-Command", &script])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())

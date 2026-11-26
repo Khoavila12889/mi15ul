@@ -3,13 +3,14 @@ use std::collections::VecDeque;
 use eframe::egui;
 
 use crate::app::{CachedLogLine, ErrorsTab, LogcatPane, LogcatTagFilter};
+use crate::i18n;
 use crate::theme;
 use crate::ui_elements;
 
 /// Draws the all-logcat body and returns the number of rows in the log text area.
 pub fn logcat_all_panel(ui: &mut egui::Ui, pane: &mut LogcatPane, auto_scroll: bool) -> usize {
     ui_elements::filter_row(ui, |ui| {
-        ui.label("Tag filter:");
+        ui.label(i18n::t("logcat.tag_filter"));
         let response = ui_elements::tag_filter_input(ui, &mut pane.tag_input, "logcat_tag_input");
         if response.lost_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter)) {
             pane.add_tag();
@@ -24,11 +25,11 @@ pub fn logcat_all_panel(ui: &mut egui::Ui, pane: &mut LogcatPane, auto_scroll: b
     }
 
     if let Some(error) = &pane.error {
-        ui_elements::error_label(ui, error);
+        ui_elements::error_label(ui, i18n::adb_error_vi(error));
     }
 
     if pane.lines.is_empty() {
-        ui.label("Waiting for log output…");
+        ui.label(i18n::t("logcat.waiting_all"));
         return 0;
     }
 
@@ -57,8 +58,8 @@ pub fn logcat_errors_panel(ui: &mut egui::Ui, pane: &mut LogcatPane, auto_scroll
         ui,
         &mut pane.errors_tab,
         &[
-            (ErrorsTab::Errors, "Errors"),
-            (ErrorsTab::Crashes, "Panics/Crashes"),
+            (ErrorsTab::Errors, i18n::t("logcat.tab_errors")),
+            (ErrorsTab::Crashes, i18n::t("logcat.tab_crashes")),
         ],
     );
 
@@ -71,7 +72,7 @@ pub fn logcat_errors_panel(ui: &mut egui::Ui, pane: &mut LogcatPane, auto_scroll
 /// Draws the Errors tab body (unchanged E/F view with its own tag filters).
 fn logcat_errors_tab(ui: &mut egui::Ui, pane: &mut LogcatPane, auto_scroll: bool) -> usize {
     ui_elements::filter_row(ui, |ui| {
-        ui.label("Tag filter:");
+        ui.label(i18n::t("logcat.tag_filter"));
         let response =
             ui_elements::tag_filter_input(ui, &mut pane.tag_input, "logcat_errors_tag_input");
         if response.lost_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter)) {
@@ -87,11 +88,11 @@ fn logcat_errors_tab(ui: &mut egui::Ui, pane: &mut LogcatPane, auto_scroll: bool
     }
 
     if let Some(error) = &pane.error {
-        ui_elements::error_label(ui, error);
+        ui_elements::error_label(ui, i18n::adb_error_vi(error));
     }
 
     if pane.lines.is_empty() {
-        ui.label("Waiting for error log output…");
+        ui.label(i18n::t("logcat.waiting_errors"));
         return 0;
     }
 
@@ -117,7 +118,7 @@ fn logcat_errors_tab(ui: &mut egui::Ui, pane: &mut LogcatPane, auto_scroll: bool
 /// Draws the Panics/Crashes tab body over the same E/F ring with crash tags.
 fn logcat_crashes_tab(ui: &mut egui::Ui, pane: &mut LogcatPane, auto_scroll: bool) -> usize {
     ui_elements::filter_row(ui, |ui| {
-        ui.label("Tag filter:");
+        ui.label(i18n::t("logcat.tag_filter"));
         let response = ui_elements::tag_filter_input(
             ui,
             &mut pane.crash_tag_input,
@@ -136,11 +137,11 @@ fn logcat_crashes_tab(ui: &mut egui::Ui, pane: &mut LogcatPane, auto_scroll: boo
     }
 
     if let Some(error) = &pane.error {
-        ui_elements::error_label(ui, error);
+        ui_elements::error_label(ui, i18n::adb_error_vi(error));
     }
 
     if pane.lines.is_empty() {
-        ui.label("Waiting for error log output…");
+        ui.label(i18n::t("logcat.waiting_errors"));
         return 0;
     }
 
@@ -149,7 +150,7 @@ fn logcat_crashes_tab(ui: &mut egui::Ui, pane: &mut LogcatPane, auto_scroll: boo
     let matching = filtered_line_indices(&pane.lines, &tag_filters, show_timestamps, true);
 
     if matching.is_empty() {
-        ui.label("No panics or crashes in the error buffer…");
+        ui.label(i18n::t("logcat.no_crashes"));
         return 0;
     }
 

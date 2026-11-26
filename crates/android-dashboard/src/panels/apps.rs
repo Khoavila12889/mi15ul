@@ -8,6 +8,7 @@ use crossbeam_channel::{Receiver, unbounded};
 use eframe::egui;
 
 use crate::format::format_bytes_mb;
+use crate::i18n;
 use crate::metrics::PackageStorageState;
 use crate::theme::{self, colors};
 
@@ -78,8 +79,8 @@ enum PackageAction {
 impl PackageAction {
     fn verb(self) -> &'static str {
         match self {
-            PackageAction::Uninstall => "Removed",
-            PackageAction::Restore => "Restored",
+            PackageAction::Uninstall => i18n::t("cleanup.verb_uninstall"),
+            PackageAction::Restore => i18n::t("cleanup.verb_restore"),
         }
     }
 }
@@ -208,11 +209,16 @@ impl AppCleanup {
                 } => {
                     self.busy = false;
                     self.rx = None;
+                    let ok_s = succeeded.to_string();
+                    let fail_s = failed.to_string();
                     self.status = Some(Status {
                         text: if failed == 0 {
-                            format!("{} {succeeded} app(s).", action.verb())
+                            i18n::tf("cleanup.result_ok", &[("verb", action.verb()), ("ok", &ok_s)])
                         } else {
-                            format!("{} {succeeded} app(s), {failed} failed.", action.verb())
+                            i18n::tf(
+                                "cleanup.result_fail",
+                                &[("verb", action.verb()), ("ok", &ok_s), ("fail", &fail_s)],
+                            )
                         },
                         error: failed > 0,
                     });
@@ -237,7 +243,7 @@ impl AppCleanup {
         }
 
         let mut open = true;
-        egui::Window::new("App Cleanup")
+        egui::Window::new(i18n::t("cleanup.title"))
             .id(egui::Id::new("app_cleanup"))
             .open(&mut open)
             .collapsible(false)
@@ -277,7 +283,7 @@ impl AppCleanup {
     ) {
         if let Some(serial) = serial {
             ui.label(
-                egui::RichText::new(format!("Device {serial}"))
+                egui::RichText::new(i18n::tf("cleanup.device", &[("serial", serial)]))
                     .small()
                     .color(colors::FOOTER_TEXT),
             );
@@ -285,14 +291,17 @@ impl AppCleanup {
 
         ui.add_space(theme::ITEM_SPACING_Y);
         ui.horizontal(|ui| {
-            ui.label("Search");
+            ui.label(i18n::t("cleanup.search"));
             ui.add(
                 egui::TextEdit::singleline(&mut self.search)
-                    .hint_text(egui::RichText::new("package name").color(colors::PLACEHOLDER_TEXT))
+                    .hint_text(
+                        egui::RichText::new(i18n::t("cleanup.search_hint"))
+                            .color(colors::PLACEHOLDER_TEXT),
+                    )
                     .desired_width(240.0),
             );
-            ui.checkbox(&mut self.show_system, "Show system apps");
-            if ui.button("Clear selection").clicked() {
+            ui.checkbox(&mut self.show_system, i18n::t("cleanup.show_system"));
+            if ui.button(i18n::t("cleanup.clear_selection")).clicked() {
                 self.selected.clear();
             }
         });
@@ -301,9 +310,9 @@ impl AppCleanup {
         let rows = self.visible_rows(storage);
         if rows.is_empty() {
             ui.label(if storage.packages.is_empty() {
-                "Waiting for the package scan…"
+                i18n::t("cleanup.waiting_scan")
             } else {
-                "No packages match the current filter."
+                i18n::t("cleanup.no_match")
             });
             return;
         }
@@ -314,16 +323,17 @@ impl AppCleanup {
                 .filter(|row| !row.protected)
                 .map(|row| row.package.as_str())
                 .collect();
-            if ui.button("Select all").clicked() {
+            if ui.button(i18n::t("cleanup.select_all")).clicked() {
                 for package in selectable {
                     self.selected.insert(package.to_string());
                 }
             }
+            let shown = rows.len().to_string();
+            let total = storage.packages.len().to_string();
             ui.label(
-                egui::RichText::new(format!(
-                    "{}/{} packages",
-                    rows.len(),
-                    storage.packages.len()
+                egui::RichText::new(i18n::tf(
+                    "cleanup.package_count",
+                    &[("shown", &shown), ("total", &total)],
                 ))
                 .small()
                 .color(colors::FOOTER_TEXT),
@@ -376,18 +386,18 @@ impl AppCleanup {
                     .monospace()
                     .color(colors::FOOTER_TEXT),
             )
-            .on_hover_text("Protected core package — removal is not allowed");
+            .on_hover_text(i18n::t("cleanup.protected_hover"));
         } else {
             ui.label(egui::RichText::new(&row.package).monospace())
                 .on_hover_text(&row.package);
         }
 
         let kind = if row.protected {
-            "core"
+            i18n::t("cleanup.kind_core")
         } else if row.system {
-            "system"
+            i18n::t("cleanup.kind_system")
         } else {
-            "user"
+            i18n::t("cleanup.kind_user")
         };
         let kind_color = if row.system {
             colors::LOG_WARNING
@@ -417,16 +427,18 @@ impl AppCleanup {
             .filter_map(|package| storage.sizes.get(package).copied())
             .sum();
 
+        let count_s = self.selected.len().to_string();
+        let size_s = format_bytes_mb(selected_bytes);
         ui.horizontal(|ui| {
-            ui.label(format!(
-                "{} selected · {}",
-                self.selected.len(),
-                format_bytes_mb(selected_bytes)
+            ui.label(i18n::tf(
+                "cleanup.selected_summary",
+                &[("count", &count_s), ("size", &size_s)],
             ));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let can_uninstall = !self.busy && serial.is_some() && !self.selected.is_empty();
                 let button = egui::Button::new(
-                    egui::RichText::new("Uninstall selected…").color(colors::OFF_WHITE),
+                    egui::RichText::new(i18n::t("cleanup.uninstall_selected"))
+                        .color(colors::OFF_WHITE),
                 )
                 .fill(colors::ERROR);
                 if ui.add_enabled(can_uninstall, button).clicked() {
@@ -460,7 +472,7 @@ impl AppCleanup {
             ui.horizontal(|ui| {
                 ui.spinner();
                 ui.label(
-                    egui::RichText::new("Running adb…")
+                    egui::RichText::new(i18n::t("cleanup.running_adb"))
                         .small()
                         .color(colors::FOOTER_TEXT),
                 );
@@ -476,7 +488,7 @@ impl AppCleanup {
         ui.add_space(theme::ITEM_SPACING_Y);
         ui.separator();
         ui.label(
-            egui::RichText::new("Removed this session")
+            egui::RichText::new(i18n::t("cleanup.removed_session"))
                 .small()
                 .color(colors::FOOTER_TEXT),
         );
@@ -485,7 +497,10 @@ impl AppCleanup {
             ui.horizontal(|ui| {
                 ui.label(egui::RichText::new(&package).monospace().small());
                 if ui
-                    .add_enabled(!self.busy && serial.is_some(), egui::Button::new("Restore"))
+                    .add_enabled(
+                        !self.busy && serial.is_some(),
+                        egui::Button::new(i18n::t("cleanup.restore")),
+                    )
                     .clicked()
                 {
                     if let Some(serial) = serial {
@@ -499,12 +514,9 @@ impl AppCleanup {
     fn show_hint(&self, ui: &mut egui::Ui) {
         ui.add_space(theme::ITEM_SPACING_Y);
         ui.label(
-            egui::RichText::new(
-                "Uninstall removes apps for the current user (pm uninstall --user 0). \
-                 System apps stay in the system image and can be restored here.",
-            )
-            .small()
-            .color(colors::FOOTER_TEXT),
+            egui::RichText::new(i18n::t("cleanup.hint"))
+                .small()
+                .color(colors::FOOTER_TEXT),
         );
     }
 
@@ -520,11 +532,12 @@ impl AppCleanup {
             .filter_map(|package| storage.sizes.get(package).copied())
             .sum();
 
-        ui.heading("Remove these apps?");
-        ui.label(format!(
-            "{} app(s) · {} will be removed for the current user.",
-            packages.len(),
-            format_bytes_mb(total_bytes)
+        let count_s = packages.len().to_string();
+        let size_s = format_bytes_mb(total_bytes);
+        ui.heading(i18n::t("cleanup.confirm_title"));
+        ui.label(i18n::tf(
+            "cleanup.confirm_summary",
+            &[("count", &count_s), ("size", &size_s)],
         ));
         ui.add_space(theme::ITEM_SPACING_Y);
 
@@ -537,7 +550,7 @@ impl AppCleanup {
                         ui.label(egui::RichText::new(package).monospace());
                         if storage.is_system(package) {
                             ui.label(
-                                egui::RichText::new("system")
+                                egui::RichText::new(i18n::t("cleanup.kind_system"))
                                     .small()
                                     .color(colors::LOG_WARNING),
                             );
@@ -557,12 +570,9 @@ impl AppCleanup {
 
         ui.add_space(theme::ITEM_SPACING_Y);
         ui.label(
-            egui::RichText::new(
-                "User-installed apps are deleted permanently. System apps can be restored \
-                 from the Removed list.",
-            )
-            .small()
-            .color(colors::LOG_WARNING),
+            egui::RichText::new(i18n::t("cleanup.confirm_warning"))
+                .small()
+                .color(colors::LOG_WARNING),
         );
         ui.add_space(theme::ITEM_SPACING_Y);
 
@@ -572,7 +582,7 @@ impl AppCleanup {
             // from selecting a package and confirming removal in one gesture.
             let can_run = !self.busy && serial.is_some();
             let button = egui::Button::new(
-                egui::RichText::new(format!("Uninstall {} app(s)", packages.len()))
+                egui::RichText::new(i18n::tf("cleanup.confirm_btn", &[("count", &count_s)]))
                     .color(colors::OFF_WHITE),
             )
             .fill(colors::ERROR);
@@ -586,7 +596,7 @@ impl AppCleanup {
                 }
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.button("Cancel").clicked() {
+                if ui.button(i18n::t("common.cancel")).clicked() {
                     self.pending = None;
                     self.pending_system.clear();
                 }
@@ -609,7 +619,7 @@ impl AppCleanup {
                     PackageAction::Uninstall => adb_client::uninstall_package(&serial, &package),
                     PackageAction::Restore => adb_client::restore_package(&serial, &package),
                 }
-                .map_err(|err| err.user_message());
+                .map_err(|err| i18n::adb_error_vi(&err.user_message()));
 
                 if result.is_ok() {
                     succeeded += 1;

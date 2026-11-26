@@ -2,24 +2,25 @@ use adb_client::NetworkStats;
 use eframe::egui;
 
 use crate::format::{format_bytes_mb, format_rate_mb};
+use crate::i18n;
 use crate::metrics::MetricStore;
 use crate::theme;
 use crate::ui_elements;
 
 pub fn network_panel(ui: &mut egui::Ui, metrics: &MetricStore) {
     if let Some(error) = &metrics.network_error {
-        ui_elements::error_label(ui, error);
+        ui_elements::error_label(ui, i18n::adb_error_vi(error));
     }
 
     let Some(stats) = &metrics.network_stats else {
         if metrics.network_error.is_none() {
-            ui.label("Fetching network stats…");
+            ui.label(i18n::t("network.fetching"));
         }
         return;
     };
 
     if stats.interfaces.is_empty() {
-        ui.label("No network interfaces reported.");
+        ui.label(i18n::t("network.empty"));
         return;
     }
 
@@ -38,16 +39,16 @@ fn show_network_table(ui: &mut egui::Ui, stats: &[NetworkRow]) {
                 .spacing(theme::GRID_SPACING)
                 .striped(true)
                 .show(ui, |ui| {
-                    ui.label("Interface");
-                    ui.label("Transport");
-                    ui.label("RX");
-                    ui.label("TX");
-                    ui.label("Rate");
+                    ui.label(i18n::t("network.col_interface"));
+                    ui.label(i18n::t("network.col_transport"));
+                    ui.label(i18n::t("network.col_rx"));
+                    ui.label(i18n::t("network.col_tx"));
+                    ui.label(i18n::t("network.col_rate"));
                     ui.end_row();
 
                     for row in stats {
                         ui.label(&row.interface);
-                        ui.label(&row.transport);
+                        ui.label(i18n::network_transport(&row.transport));
                         ui.label(&row.rx);
                         ui.label(&row.tx);
                         ui.label(&row.rate);

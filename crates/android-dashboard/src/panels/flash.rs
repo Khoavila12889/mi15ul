@@ -1,3 +1,4 @@
+use crate::i18n;
 use crate::theme::colors;
 use crate::ui_elements;
 use adb_client::Adb;
@@ -37,12 +38,6 @@ pub enum FlashTab {
     ManifestGenerator,
     LockBootloader,
     Guide,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum GuideLang {
-    Vi,
-    En,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -138,8 +133,6 @@ pub struct FlashDialog {
     direct_lock_method: LockMethod,
     confirm_direct_lock: bool,
     direct_lock_text: String,
-    // Tab 6: Guide
-    guide_lang: GuideLang,
     // Async channel & execution state
     tx: Sender<FlashEvent>,
     rx: Receiver<FlashEvent>,
@@ -201,7 +194,6 @@ impl Default for FlashDialog {
             direct_lock_method: LockMethod::OemLock,
             confirm_direct_lock: false,
             direct_lock_text: String::new(),
-            guide_lang: GuideLang::Vi,
             tx,
             rx,
             is_flashing: false,
@@ -210,8 +202,7 @@ impl Default for FlashDialog {
             progress_percent: None,
             progress_label: String::new(),
             stock_progress: None,
-            status: "Ready. Connect a device in Fastboot / Fastbootd or Recovery Sideload mode."
-                .into(),
+            status: i18n::t("flash.ready_status").into(),
             output: String::new(),
             error: false,
             log_path: None,
@@ -268,7 +259,7 @@ impl FlashDialog {
         if self.is_flashing {
             return;
         }
-        self.status = "Scanning Fastboot & Recovery devices…".into();
+        self.status = i18n::t("flash.scanning").into();
         self.error = false;
         self.pending_bg_tasks += 2;
 
@@ -352,10 +343,11 @@ impl FlashDialog {
                                 self.device_info = None;
                             }
                             if !self.is_flashing {
-                                self.status = format!(
-                                    "Found {} Fastboot device(s), {} Recovery/Sideload device(s).",
-                                    self.fastboot_devices.len(),
-                                    self.sideload_devices.len()
+                                let fb_s = self.fastboot_devices.len().to_string();
+                                let sl_s = self.sideload_devices.len().to_string();
+                                self.status = i18n::tf(
+                                    "flash.scan_summary",
+                                    &[("fb", &fb_s), ("sl", &sl_s)],
                                 );
                                 self.error = false;
                             }
@@ -364,7 +356,7 @@ impl FlashDialog {
                             self.fastboot_devices.clear();
                             self.selected_fastboot = None;
                             self.device_info = Some(Err(e.clone()));
-                            self.status = format!("Fastboot scan failed: {e}");
+                            self.status = i18n::tf("flash.scan_failed", &[("err", &e)]);
                             self.error = true;
                         }
                     }
@@ -398,18 +390,22 @@ impl FlashDialog {
                     self.progress_label.clear();
                     match res {
                         Ok(plan) => {
-                            self.status = format!(
-                                "Verified plan for {} ({} images, {:.2} MB ready)",
-                                plan.manifest().product,
-                                plan.manifest().images.len(),
-                                plan.total_bytes() as f64 / (1024.0 * 1024.0)
+                            let count_s = plan.manifest().images.len().to_string();
+                            let mb_s = format!("{:.2}", plan.total_bytes() as f64 / (1024.0 * 1024.0));
+                            self.status = i18n::tf(
+                                "flash.plan_verified",
+                                &[
+                                    ("product", &plan.manifest().product),
+                                    ("count", &count_s),
+                                    ("mb", &mb_s),
+                                ],
                             );
                             self.error = false;
                             self.plan_verified = Some(plan);
                             self.confirm_full_flash = false;
                         }
                         Err(e) => {
-                            self.status = format!("Plan verification failed: {e}");
+                            self.status = i18n::tf("flash.plan_failed", &[("err", &e)]);
                             self.error = true;
                             self.plan_verified = None;
                         }
@@ -431,16 +427,17 @@ impl FlashDialog {
                         Ok((manifest, path)) => {
                             self.manifest_path = path.display().to_string();
                             self.invalidate_full_plan();
-                            self.status = format!(
-                                "Generated manifest with {} images: {}",
-                                manifest.images.len(),
-                                path.display()
+                            let count_s = manifest.images.len().to_string();
+                            let path_s = path.display().to_string();
+                            self.status = i18n::tf(
+                                "flash.gen_done",
+                                &[("count", &count_s), ("path", &path_s)],
                             );
                             self.error = false;
                             self.gen_result = Some(Ok((manifest, path)));
                         }
                         Err(e) => {
-                            self.status = format!("Generation error: {e}");
+                            self.status = i18n::tf("flash.gen_err", &[("err", &e)]);
                             self.error = true;
                             self.gen_result = Some(Err(e));
                         }
@@ -451,17 +448,25 @@ impl FlashDialog {
                     match &res {
                         Ok(info) => {
                             self.stock_mode = info.mode;
-                            self.status = format!(
-                                "Detected {} ({} flash steps, {}, product: {})",
-                                info.mode.label(),
-                                info.flash_command_count,
-                                format_bytes_human(info.total_bytes),
-                                info.expected_product.as_deref().unwrap_or("unspecified")
+                            let steps_s = info.flash_command_count.to_string();
+                            let size_s = format_bytes_human(info.total_bytes);
+                            let prod_s = info
+                                .expected_product
+                                .as_deref()
+                                .unwrap_or_else(|| i18n::t("flash.stock_unspecified"));
+                            self.status = i18n::tf(
+                                "flash.stock_detected",
+                                &[
+                                    ("mode", i18n::stock_mode_label(info.mode)),
+                                    ("steps", &steps_s),
+                                    ("size", &size_s),
+                                    ("product", prod_s),
+                                ],
                             );
                             self.error = false;
                         }
                         Err(e) => {
-                            self.status = format!("Stock ROM inspection failed: {e}");
+                            self.status = i18n::tf("flash.stock_inspect_failed", &[("err", e)]);
                             self.error = true;
                         }
                     }
@@ -523,7 +528,7 @@ impl FlashDialog {
                         Err(err) => {
                             self.status = err.clone();
                             self.error = true;
-                            self.output.push_str(&format!("ERROR: {err}\n"));
+                            self.output.push_str(&format!("LỖI: {err}\n"));
                         }
                     }
                 }
@@ -540,15 +545,15 @@ impl FlashDialog {
                     match res {
                         Ok(msg) => {
                             self.progress_percent = Some(100.0);
-                            self.status = format!("COMPLETED: {msg}");
+                            self.status = i18n::tf("flash.completed", &[("msg", &msg)]);
                             self.error = false;
-                            self.output.push_str(&format!("\n=== SUCCESS: {msg} ===\n"));
+                            self.output.push_str(&format!("\n=== THÀNH CÔNG: {msg} ===\n"));
                         }
                         Err(err) => {
                             self.progress_percent = None;
-                            self.status = format!("FAILED: {err}");
+                            self.status = i18n::tf("flash.failed", &[("err", &err)]);
                             self.error = true;
-                            self.output.push_str(&format!("\n=== ERROR: {err} ===\n"));
+                            self.output.push_str(&format!("\n=== LỖI: {err} ===\n"));
                         }
                     }
                 }
@@ -594,7 +599,7 @@ impl FlashDialog {
         self.handle_dropped_files(ctx);
 
         let mut open = self.open;
-        egui::Window::new("Flash ROM & Fastboot Tools")
+        egui::Window::new(i18n::t("flash.window_title"))
             .open(&mut open)
             .default_size([920.0, 740.0])
             .min_width(540.0)
@@ -606,9 +611,7 @@ impl FlashDialog {
 
         if !open && self.is_flashing {
             self.open = true;
-            self.status =
-                "Flashing/Sideload in progress — wait for completion before closing this window."
-                    .into();
+            self.status = i18n::t("flash.busy_close").into();
             self.error = true;
         } else {
             self.open = open;
@@ -636,7 +639,7 @@ impl FlashDialog {
                 } else {
                     self.gen_folder = display;
                     self.tab = FlashTab::ManifestGenerator;
-                    self.status = "Loaded dropped ROM folder into Manifest Generator.".into();
+                    self.status = i18n::t("flash.drop_gen").into();
                     self.error = false;
                 }
             } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
@@ -645,21 +648,21 @@ impl FlashDialog {
                         self.manifest_path = display;
                         self.invalidate_full_plan();
                         self.tab = FlashTab::FullRom;
-                        self.status = "Loaded dropped manifest.json.".into();
+                        self.status = i18n::t("flash.drop_manifest").into();
                         self.error = false;
                     }
                     "img" => {
                         self.single_image_path = display;
                         self.invalidate_single(true);
                         self.tab = FlashTab::SinglePartition;
-                        self.status = "Loaded dropped .img file.".into();
+                        self.status = i18n::t("flash.drop_img").into();
                         self.error = false;
                     }
                     "zip" => {
                         self.sideload_zip_path = display;
                         self.invalidate_sideload(true);
                         self.tab = FlashTab::AdbSideload;
-                        self.status = "Loaded dropped .zip package into ADB Sideload.".into();
+                        self.status = i18n::t("flash.drop_zip").into();
                         self.error = false;
                     }
                     _ => {}
@@ -673,20 +676,20 @@ impl FlashDialog {
 
         ui.horizontal_wrapped(|ui| {
             if ui
-                .add_enabled(!is_busy, egui::Button::new("Refresh Fastboot"))
+                .add_enabled(!is_busy, egui::Button::new(i18n::t("flash.emb_refresh")))
                 .clicked()
             {
                 self.refresh_fastboot_devices();
             }
             if let Some(adb) = self.selected_adb.clone() {
                 if ui
-                    .add_enabled(!is_busy, egui::Button::new("Reboot ADB → Bootloader"))
+                    .add_enabled(!is_busy, egui::Button::new(i18n::t("flash.emb_reboot_bl")))
                     .clicked()
                 {
                     self.run_adb_reboot(adb, Some("bootloader"));
                 }
             }
-            if ui.button("Open Full Flash Window…").clicked() {
+            if ui.button(i18n::t("flash.emb_open_full")).clicked() {
                 self.open_tab(FlashTab::LockBootloader);
             }
             if self.pending_bg_tasks > 0 && !self.is_flashing {
@@ -716,17 +719,17 @@ impl FlashDialog {
 
         ui.add_space(4.0);
         ui.horizontal_wrapped(|ui| {
-            ui.small("Other Flash Tools:");
-            if ui.small_button("Full ROM Manifest").clicked() {
+            ui.small(i18n::t("flash.emb_other"));
+            if ui.small_button(i18n::t("flash.tab_full")).clicked() {
                 self.open_tab(FlashTab::FullRom);
             }
-            if ui.small_button("Single Partition / Boot").clicked() {
+            if ui.small_button(i18n::t("flash.tab_single")).clicked() {
                 self.open_tab(FlashTab::SinglePartition);
             }
-            if ui.small_button("ADB Sideload (ZIP)").clicked() {
+            if ui.small_button(i18n::t("flash.tab_sideload")).clicked() {
                 self.open_tab(FlashTab::AdbSideload);
             }
-            if ui.small_button("Guide / Hướng dẫn").clicked() {
+            if ui.small_button(i18n::t("flash.tab_guide")).clicked() {
                 self.open_tab(FlashTab::Guide);
             }
         });
@@ -736,7 +739,7 @@ impl FlashDialog {
         ui.horizontal_wrapped(|ui| {
             if self.fastboot_devices.is_empty() {
                 ui.label(
-                    egui::RichText::new("No Fastboot devices detected.")
+                    egui::RichText::new(i18n::t("flash.bar_none"))
                         .color(egui::Color32::YELLOW),
                 );
             } else {
@@ -767,57 +770,55 @@ impl FlashDialog {
                         ui.horizontal_wrapped(|ui| {
                             ui_elements::status_pill(
                                 ui,
-                                &format!("Product: {}", dev.product),
+                                &i18n::tf("flash.bar_product", &[("product", &dev.product)]),
                                 colors::ACCENT_BLUE,
                             );
                             ui_elements::status_pill(
                                 ui,
-                                &format!("Mode: {}", dev.mode),
+                                &i18n::tf("flash.bar_mode", &[("mode", &dev.mode)]),
                                 colors::TEXT_MUTED,
                             );
+                            let slot_s = if dev.slot.is_empty() { "N/A" } else { &dev.slot };
                             ui_elements::status_pill(
                                 ui,
-                                &format!(
-                                    "Slot: {}",
-                                    if dev.slot.is_empty() { "N/A" } else { &dev.slot }
-                                ),
+                                &i18n::tf("flash.bar_slot", &[("slot", slot_s)]),
                                 colors::TEXT_MUTED,
                             );
                             if dev.unlocked {
                                 ui_elements::status_pill(
                                     ui,
-                                    "Bootloader: Unlocked",
+                                    i18n::t("flash.bar_unlocked"),
                                     colors::ACCENT_GREEN,
                                 );
                             } else {
                                 ui_elements::status_pill(
                                     ui,
-                                    "Bootloader: LOCKED (flashing blocked)",
+                                    i18n::t("flash.bar_locked"),
                                     colors::ACCENT_RED,
                                 );
                             }
                         });
                         let mut extras = Vec::new();
                         if let Some(v) = &dev.battery_voltage {
-                            extras.push(format!("Battery: {v}"));
+                            extras.push(i18n::tf("flash.bar_battery", &[("val", v)]));
                         }
                         if let Some(ok) = dev.battery_soc_ok {
-                            extras.push(format!(
-                                "Battery OK: {}",
-                                if ok { "yes" } else { "LOW — charge before flashing!" }
-                            ));
+                            let val = if ok {
+                                i18n::t("flash.bar_battery_yes")
+                            } else {
+                                i18n::t("flash.bar_battery_low")
+                            };
+                            extras.push(i18n::tf("flash.bar_battery_ok", &[("val", val)]));
                         }
                         if let Some(sz) = dev.max_download_size {
-                            extras.push(format!(
-                                "Max Download: {:.0} MB",
-                                sz as f64 / (1024.0 * 1024.0)
-                            ));
+                            let mb = format!("{:.0}", sz as f64 / (1024.0 * 1024.0));
+                            extras.push(i18n::tf("flash.bar_max_dl", &[("mb", &mb)]));
                         }
                         if let Some(anti) = &dev.anti_rollback {
-                            extras.push(format!("Anti-Rollback: {anti}"));
+                            extras.push(i18n::tf("flash.bar_arb", &[("val", anti)]));
                         }
                         if let Some(bl) = &dev.version_bootloader {
-                            extras.push(format!("Bootloader Ver: {bl}"));
+                            extras.push(i18n::tf("flash.bar_bl_ver", &[("val", bl)]));
                         }
                         if !extras.is_empty() {
                             ui.add_space(2.0);
@@ -826,17 +827,14 @@ impl FlashDialog {
                             );
                         }
                         if dev.battery_soc_ok == Some(false) {
-                            ui.colored_label(
-                                colors::ERROR,
-                                "Warning: Device reports low battery. Charge above 30% before flashing.",
-                            );
+                            ui.colored_label(colors::ERROR, i18n::t("flash.bar_low_warn"));
                         }
                     });
                 }
                 Err(err) => {
                     ui.colored_label(
                         colors::ERROR,
-                        format!("Device Probe Warning: {err}"),
+                        i18n::tf("flash.bar_probe_err", &[("err", err)]),
                     );
                 }
             }
@@ -847,12 +845,13 @@ impl FlashDialog {
         ui.horizontal(|ui| {
             if self.is_flashing {
                 ui.spinner();
-                ui.label(format!(
-                    "Operation in progress… ({:.0}s elapsed)",
+                let secs = format!(
+                    "{:.0}",
                     self.started
                         .map(|s| s.elapsed().as_secs_f64())
                         .unwrap_or_default()
-                ));
+                );
+                ui.label(i18n::tf("flash.prog_running", &[("secs", &secs)]));
             }
             if let Some(pct) = self.progress_percent {
                 ui.add(
@@ -870,16 +869,26 @@ impl FlashDialog {
                 ui.horizontal_wrapped(|ui| {
                     let active_text = match (&sp.current_partition, sp.current_chunk) {
                         (Some(part), Some((cur, tot))) => {
-                            format!("Active: {part} (chunk {cur}/{tot})")
+                            let c = cur.to_string();
+                            let t = tot.to_string();
+                            i18n::tf(
+                                "flash.prog_active_chunk",
+                                &[("part", part), ("cur", &c), ("tot", &t)],
+                            )
                         }
-                        (Some(part), None) => format!("Active: {part}"),
+                        (Some(part), None) => i18n::tf("flash.prog_active", &[("part", part)]),
                         (None, _) if sp.completed_steps >= sp.total_steps && sp.total_steps > 0 => {
-                            "Completed all script steps".into()
+                            i18n::t("flash.prog_done").into()
                         }
-                        (None, _) => "Preparing / checking device…".into(),
+                        (None, _) => i18n::t("flash.prog_preparing").into(),
                     };
                     ui_elements::status_pill(ui, &active_text, colors::ACCENT_GREEN);
-                    ui.label(format!("Steps: {}/{}", sp.completed_steps, sp.total_steps));
+                    let done_s = sp.completed_steps.to_string();
+                    let tot_s = sp.total_steps.to_string();
+                    ui.label(i18n::tf(
+                        "flash.prog_steps",
+                        &[("done", &done_s), ("total", &tot_s)],
+                    ));
                     if sp.total_bytes > 0 {
                         ui.label(format!(
                             "| {} / {}",
@@ -889,9 +898,10 @@ impl FlashDialog {
                     }
                     if let Some(eta) = sp.eta_seconds {
                         if eta > 0 {
+                            let eta_s = format_duration_short(eta);
                             ui_elements::status_pill(
                                 ui,
-                                &format!("ETA ~{}", format_duration_short(eta)),
+                                &i18n::tf("flash.prog_eta", &[("eta", &eta_s)]),
                                 colors::ACCENT_BLUE,
                             );
                         }
@@ -906,17 +916,18 @@ impl FlashDialog {
                         .collect();
                     let extra = sp.remaining_summary.len().saturating_sub(10);
                     let suffix = if extra > 0 {
-                        format!(", +{extra} more")
+                        let ex_s = extra.to_string();
+                        i18n::tf("flash.prog_remaining_more", &[("extra", &ex_s)])
                     } else {
                         String::new()
                     };
+                    let count_s = sp.remaining_summary.len().to_string();
+                    let list_s = shown.join(", ");
                     ui.add_space(2.0);
                     ui.small(
-                        egui::RichText::new(format!(
-                            "Remaining ({}): {}{}",
-                            sp.remaining_summary.len(),
-                            shown.join(", "),
-                            suffix
+                        egui::RichText::new(i18n::tf(
+                            "flash.prog_remaining",
+                            &[("count", &count_s), ("list", &list_s), ("suffix", &suffix)],
                         ))
                         .color(colors::TEXT_MUTED),
                     );
@@ -933,9 +944,9 @@ impl FlashDialog {
 
         // 1. Header & Device Connection
         ui.horizontal_wrapped(|ui| {
-            ui.heading("Fastboot & Recovery Devices");
+            ui.heading(i18n::t("flash.header_devices"));
             if ui
-                .add_enabled(!is_busy, egui::Button::new("Refresh Devices"))
+                .add_enabled(!is_busy, egui::Button::new(i18n::t("flash.btn_refresh")))
                 .clicked()
             {
                 self.refresh_fastboot_devices();
@@ -950,48 +961,48 @@ impl FlashDialog {
         ui.add_space(4.0);
 
         // 2. Quick Reboot, A/B Slot Switch & Tool Paths
-        ui.collapsing("Reboot, A/B Slot & Tool Paths", |ui| {
+        ui.collapsing(i18n::t("flash.collapse_reboot"), |ui| {
             ui.add_enabled_ui(!is_busy, |ui| {
                 ui.horizontal_wrapped(|ui| {
                     if let Some(adb) = self.selected_adb.clone() {
-                        ui.label(format!("From ADB ({adb}):"));
-                        if ui.button("Reboot to Bootloader").clicked() {
+                        ui.label(i18n::tf("flash.from_adb", &[("adb", &adb)]));
+                        if ui.button(i18n::t("flash.adb_reboot_bl")).clicked() {
                             self.run_adb_reboot(adb.clone(), Some("bootloader"));
                         }
-                        if ui.button("Reboot to Fastbootd").clicked() {
+                        if ui.button(i18n::t("flash.adb_reboot_fbd")).clicked() {
                             self.run_adb_reboot(adb.clone(), Some("fastboot"));
                         }
-                        if ui.button("Reboot to Recovery").clicked() {
+                        if ui.button(i18n::t("flash.adb_reboot_rec")).clicked() {
                             self.run_adb_reboot(adb, Some("recovery"));
                         }
                     } else {
-                        ui.small("No active ADB device selected in Dashboard.");
+                        ui.small(i18n::t("flash.no_adb_selected"));
                     }
                 });
 
                 if let Some(fb) = self.selected_fastboot.clone() {
                     ui.horizontal_wrapped(|ui| {
-                        ui.label(format!("From Fastboot ({fb}):"));
-                        if ui.button("Reboot System").clicked() {
+                        ui.label(i18n::tf("flash.from_fb", &[("fb", &fb)]));
+                        if ui.button(i18n::t("flash.fb_reboot_sys")).clicked() {
                             self.run_fastboot_reboot(fb.clone(), "");
                         }
-                        if ui.button("Reboot Bootloader").clicked() {
+                        if ui.button(i18n::t("flash.fb_reboot_bl")).clicked() {
                             self.run_fastboot_reboot(fb.clone(), "bootloader");
                         }
-                        if ui.button("Reboot Fastbootd").clicked() {
+                        if ui.button(i18n::t("flash.fb_reboot_fbd")).clicked() {
                             self.run_fastboot_reboot(fb.clone(), "fastboot");
                         }
-                        if ui.button("Reboot Recovery").clicked() {
+                        if ui.button(i18n::t("flash.fb_reboot_rec")).clicked() {
                             self.run_fastboot_reboot(fb.clone(), "recovery");
                         }
                     });
 
                     ui.horizontal_wrapped(|ui| {
-                        ui.label("A/B Active Slot:");
-                        if ui.button("Set Active Slot A").clicked() {
+                        ui.label(i18n::t("flash.ab_slot"));
+                        if ui.button(i18n::t("flash.set_slot_a")).clicked() {
                             self.run_set_active_slot(fb.clone(), "a");
                         }
-                        if ui.button("Set Active Slot B").clicked() {
+                        if ui.button(i18n::t("flash.set_slot_b")).clicked() {
                             self.run_set_active_slot(fb, "b");
                         }
                     });
@@ -999,9 +1010,9 @@ impl FlashDialog {
 
                 ui.separator();
                 ui.horizontal(|ui| {
-                    ui.label("fastboot binary:");
+                    ui.label(i18n::t("flash.bin_fastboot"));
                     ui.add(egui::TextEdit::singleline(&mut self.fastboot_bin).desired_width(320.0));
-                    ui.label("adb binary:");
+                    ui.label(i18n::t("flash.bin_adb"));
                     ui.add(egui::TextEdit::singleline(&mut self.adb_bin).desired_width(240.0));
                 });
             });
@@ -1011,22 +1022,30 @@ impl FlashDialog {
 
         // 3. Mode Tabs
         ui.horizontal_wrapped(|ui| {
-            ui.selectable_value(&mut self.tab, FlashTab::FullRom, "Full ROM Manifest");
+            ui.selectable_value(&mut self.tab, FlashTab::FullRom, i18n::t("flash.tab_full"));
             ui.selectable_value(
                 &mut self.tab,
                 FlashTab::SinglePartition,
-                "Single Partition / Boot",
+                i18n::t("flash.tab_single"),
             );
-            ui.selectable_value(&mut self.tab, FlashTab::AdbSideload, "ADB Sideload (ZIP)");
+            ui.selectable_value(
+                &mut self.tab,
+                FlashTab::AdbSideload,
+                i18n::t("flash.tab_sideload"),
+            );
             ui.selectable_value(
                 &mut self.tab,
                 FlashTab::ManifestGenerator,
-                "Manifest Generator",
+                i18n::t("flash.tab_gen"),
             );
-            ui.selectable_value(&mut self.tab, FlashTab::LockBootloader, "Stock ROM & Lock");
-            ui.selectable_value(&mut self.tab, FlashTab::Guide, "Guide / Hướng dẫn");
+            ui.selectable_value(
+                &mut self.tab,
+                FlashTab::LockBootloader,
+                i18n::t("flash.tab_stock_lock"),
+            );
+            ui.selectable_value(&mut self.tab, FlashTab::Guide, i18n::t("flash.tab_guide"));
         });
-        ui.small("Tip: Drag & drop .json / .img / .zip or a ROM folder onto this window.");
+        ui.small(i18n::t("flash.drop_tip"));
 
         ui.separator();
 
@@ -1062,19 +1081,20 @@ impl FlashDialog {
 
         ui.horizontal_wrapped(|ui| {
             if let Some(log) = &self.log_path {
-                ui.small(format!("Journal log: {}", log.display()));
+                let p = log.display().to_string();
+                ui.small(i18n::tf("flash.journal_log", &[("path", &p)]));
             }
-            if ui.small_button("Open Logs Folder").clicked() {
+            if ui.small_button(i18n::t("flash.open_logs_folder")).clicked() {
                 open_folder_in_os(&reports_dir());
             }
         });
 
         ui.horizontal(|ui| {
-            ui.label("Console Output:");
-            if ui.button("Clear Console").clicked() {
+            ui.label(i18n::t("flash.console_output"));
+            if ui.button(i18n::t("flash.clear_console")).clicked() {
                 self.output.clear();
             }
-            if ui.button("Copy Console").clicked() {
+            if ui.button(i18n::t("flash.copy_console")).clicked() {
                 ctx.copy_text(self.output.clone());
             }
         });
@@ -1089,11 +1109,9 @@ impl FlashDialog {
     }
 
     fn render_full_rom_tab(&mut self, ui: &mut egui::Ui) {
-        ui.label(
-            "Flash a complete ROM using an explicit, SHA-256 checksum-verified manifest.json file.",
-        );
+        ui.label(i18n::t("flash.full_desc"));
         ui.horizontal(|ui| {
-            ui.label("Manifest Path:");
+            ui.label(i18n::t("flash.full_manifest_path"));
             if ui
                 .add(
                     egui::TextEdit::singleline(&mut self.manifest_path)
@@ -1103,7 +1121,7 @@ impl FlashDialog {
             {
                 self.invalidate_full_plan();
             }
-            if ui.button("Browse…").clicked() {
+            if ui.button(i18n::t("common.browse")).clicked() {
                 self.pick_path(PickTarget::ManifestJson);
             }
         });
@@ -1123,7 +1141,7 @@ impl FlashDialog {
             let can_verify =
                 self.selected_fastboot.is_some() && !self.manifest_path.trim().is_empty();
             if ui
-                .add_enabled(can_verify, egui::Button::new("Verify & Prepare Plan"))
+                .add_enabled(can_verify, egui::Button::new(i18n::t("flash.full_verify_btn")))
                 .clicked()
             {
                 self.start_prepare_plan();
@@ -1132,13 +1150,16 @@ impl FlashDialog {
 
         if let Some(plan) = self.plan_verified.clone() {
             ui.group(|ui| {
+                let mb_s = format!("{:.2}", plan.total_bytes() as f64 / (1024.0 * 1024.0));
                 ui.label(
-                    egui::RichText::new(format!(
-                        "Verified Plan — Product: {} | Build: {} | Mode: {} | Total: {:.2} MB",
-                        plan.manifest().product,
-                        plan.manifest().build,
-                        plan.manifest().mode,
-                        plan.total_bytes() as f64 / (1024.0 * 1024.0)
+                    egui::RichText::new(i18n::tf(
+                        "flash.full_plan_box",
+                        &[
+                            ("product", &plan.manifest().product),
+                            ("build", &plan.manifest().build),
+                            ("mode", &plan.manifest().mode),
+                            ("mb", &mb_s),
+                        ],
                     ))
                     .strong(),
                 );
@@ -1157,15 +1178,16 @@ impl FlashDialog {
             });
 
             ui.add_space(4.0);
-            ui.checkbox(
-                &mut self.confirm_full_flash,
-                "I understand this writes multiple partitions and will NOT disconnect the device.",
-            );
+            ui.checkbox(&mut self.confirm_full_flash, i18n::t("flash.full_confirm"));
 
             let can_flash = self.confirm_full_flash && self.selected_fastboot.is_some();
             if ui
                 .add_enabled_ui(can_flash, |ui| {
-                    ui_elements::accent_button(ui, "Start Full ROM Flash", colors::ACCENT_BLUE)
+                    ui_elements::accent_button(
+                        ui,
+                        i18n::t("flash.full_start_btn"),
+                        colors::ACCENT_BLUE,
+                    )
                 })
                 .inner
                 .clicked()
@@ -1176,9 +1198,7 @@ impl FlashDialog {
     }
 
     fn render_single_partition_tab(&mut self, ui: &mut egui::Ui) {
-        ui.label(
-            "Flash a single partition image (boot, recovery, init_boot, vbmeta, super, etc.) or temporarily boot a boot/recovery image.",
-        );
+        ui.label(i18n::t("flash.single_desc"));
 
         let active_slot = self
             .device_info
@@ -1188,7 +1208,7 @@ impl FlashDialog {
             .unwrap_or("");
 
         ui.horizontal_wrapped(|ui| {
-            ui.label("Common Partitions:");
+            ui.label(i18n::t("flash.single_presets"));
             let presets: &[&str] = if active_slot == "a" {
                 &[
                     "boot_a",
@@ -1230,7 +1250,7 @@ impl FlashDialog {
         });
 
         ui.horizontal(|ui| {
-            ui.label("Target Partition:");
+            ui.label(i18n::t("flash.single_target"));
             if ui
                 .add(egui::TextEdit::singleline(&mut self.partition).desired_width(180.0))
                 .changed()
@@ -1247,7 +1267,7 @@ impl FlashDialog {
         });
 
         ui.horizontal(|ui| {
-            ui.label("Image File Path (.img):");
+            ui.label(i18n::t("flash.single_img_path"));
             if ui
                 .add(
                     egui::TextEdit::singleline(&mut self.single_image_path)
@@ -1257,7 +1277,7 @@ impl FlashDialog {
             {
                 self.invalidate_single(true);
             }
-            if ui.button("Browse…").clicked() {
+            if ui.button(i18n::t("common.browse")).clicked() {
                 self.pick_path(PickTarget::SingleImage);
             }
         });
@@ -1267,7 +1287,7 @@ impl FlashDialog {
             if ui
                 .add_enabled(
                     path_set,
-                    egui::Button::new("Inspect Image & Compute SHA-256"),
+                    egui::Button::new(i18n::t("flash.single_inspect_btn")),
                 )
                 .clicked()
             {
@@ -1279,31 +1299,39 @@ impl FlashDialog {
             match res {
                 Ok((size, hash, is_sparse)) => {
                     ui.group(|ui| {
-                        let mb = *size as f64 / (1024.0 * 1024.0);
-                        ui.label(format!(
-                            "Size: {mb:.2} MB ({size} bytes) | Format: {}",
-                            if *is_sparse {
-                                "Android Sparse Image"
-                            } else {
-                                "Raw Image"
-                            }
+                        let mb_s = format!("{:.2}", *size as f64 / (1024.0 * 1024.0));
+                        let bytes_s = size.to_string();
+                        let fmt_s = if *is_sparse {
+                            i18n::t("flash.single_sparse")
+                        } else {
+                            i18n::t("flash.single_raw")
+                        };
+                        ui.label(i18n::tf(
+                            "flash.single_size_fmt",
+                            &[("mb", &mb_s), ("bytes", &bytes_s), ("fmt", fmt_s)],
                         ));
                         ui.label(format!("SHA-256: {hash}"));
                     });
                 }
                 Err(e) => {
-                    ui.colored_label(egui::Color32::LIGHT_RED, format!("Inspection error: {e}"));
+                    ui.colored_label(
+                        egui::Color32::LIGHT_RED,
+                        i18n::tf("flash.single_inspect_err", &[("err", e)]),
+                    );
                 }
             }
         }
 
         ui.add_space(4.0);
+        let dev_name = self
+            .selected_fastboot
+            .as_deref()
+            .unwrap_or_else(|| i18n::t("flash.single_device_fallback"));
         ui.checkbox(
             &mut self.confirm_single_flash,
-            format!(
-                "I confirm flashing this image to partition '{}' on {}",
-                self.partition,
-                self.selected_fastboot.as_deref().unwrap_or("device")
+            i18n::tf(
+                "flash.single_confirm",
+                &[("part", &self.partition), ("dev", dev_name)],
             ),
         );
 
@@ -1320,7 +1348,7 @@ impl FlashDialog {
                 .add_enabled_ui(can_flash, |ui| {
                     ui_elements::accent_button(
                         ui,
-                        &format!("Flash {}", self.partition),
+                        &i18n::tf("flash.single_flash_btn", &[("part", &self.partition)]),
                         colors::ACCENT_BLUE,
                     )
                 })
@@ -1333,11 +1361,9 @@ impl FlashDialog {
             if ui
                 .add_enabled(
                     can_temp_boot,
-                    egui::Button::new("Temporary Boot (fastboot boot)"),
+                    egui::Button::new(i18n::t("flash.single_temp_boot")),
                 )
-                .on_hover_text(
-                    "Boots a boot/recovery .img in RAM once without writing to flash storage.",
-                )
+                .on_hover_text(i18n::t("flash.single_temp_hover"))
                 .clicked()
             {
                 self.start_temp_boot();
@@ -1346,18 +1372,13 @@ impl FlashDialog {
     }
 
     fn render_sideload_tab(&mut self, ui: &mut egui::Ui) {
-        ui.label(
-            "Flash an OTA or Custom ROM .zip package via Recovery ADB Sideload (`adb sideload`).",
-        );
+        ui.label(i18n::t("flash.sl_desc"));
 
         ui.horizontal_wrapped(|ui| {
             if self.sideload_devices.is_empty() {
-                ui.colored_label(
-                    egui::Color32::YELLOW,
-                    "No device in Recovery / Sideload mode. Boot to Recovery and choose 'Apply update from ADB'.",
-                );
+                ui.colored_label(egui::Color32::YELLOW, i18n::t("flash.sl_none"));
             } else {
-                ui.label("Target Device:");
+                ui.label(i18n::t("flash.sl_target"));
                 for d in &self.sideload_devices {
                     let is_sel = self.selected_sideload.as_deref() == Some(d.serial.as_str());
                     let label = format!("{} ({})", d.serial, d.state);
@@ -1370,7 +1391,7 @@ impl FlashDialog {
         });
 
         ui.horizontal(|ui| {
-            ui.label("ROM / OTA ZIP Path:");
+            ui.label(i18n::t("flash.sl_zip_path"));
             if ui
                 .add(
                     egui::TextEdit::singleline(&mut self.sideload_zip_path)
@@ -1380,7 +1401,7 @@ impl FlashDialog {
             {
                 self.invalidate_sideload(true);
             }
-            if ui.button("Browse…").clicked() {
+            if ui.button(i18n::t("common.browse")).clicked() {
                 self.pick_path(PickTarget::SideloadZip);
             }
         });
@@ -1388,7 +1409,7 @@ impl FlashDialog {
         ui.horizontal(|ui| {
             let path_set = !self.sideload_zip_path.trim().is_empty();
             if ui
-                .add_enabled(path_set, egui::Button::new("Inspect ZIP & Compute SHA-256"))
+                .add_enabled(path_set, egui::Button::new(i18n::t("flash.sl_inspect_btn")))
                 .clicked()
             {
                 self.start_inspect_sideload();
@@ -1399,24 +1420,32 @@ impl FlashDialog {
             match res {
                 Ok((size, hash)) => {
                     ui.group(|ui| {
-                        let mb = *size as f64 / (1024.0 * 1024.0);
-                        ui.label(format!("Size: {mb:.2} MB ({size} bytes)"));
+                        let mb_s = format!("{:.2}", *size as f64 / (1024.0 * 1024.0));
+                        let bytes_s = size.to_string();
+                        ui.label(i18n::tf(
+                            "flash.sl_size",
+                            &[("mb", &mb_s), ("bytes", &bytes_s)],
+                        ));
                         ui.label(format!("SHA-256: {hash}"));
                     });
                 }
                 Err(e) => {
-                    ui.colored_label(egui::Color32::LIGHT_RED, format!("Inspection error: {e}"));
+                    ui.colored_label(
+                        egui::Color32::LIGHT_RED,
+                        i18n::tf("flash.single_inspect_err", &[("err", e)]),
+                    );
                 }
             }
         }
 
         ui.add_space(4.0);
+        let dev_name = self
+            .selected_sideload
+            .as_deref()
+            .unwrap_or_else(|| i18n::t("flash.single_device_fallback"));
         ui.checkbox(
             &mut self.confirm_sideload,
-            format!(
-                "I confirm sideloading this ZIP package to {}",
-                self.selected_sideload.as_deref().unwrap_or("device")
-            ),
+            i18n::tf("flash.sl_confirm", &[("dev", dev_name)]),
         );
 
         let is_in_sideload_state = self.selected_sideload.as_deref().is_some_and(|serial| {
@@ -1430,12 +1459,16 @@ impl FlashDialog {
             && !self.sideload_zip_path.trim().is_empty();
 
         if !is_in_sideload_state && self.selected_sideload.is_some() {
-            ui.small("Selected device is in 'recovery' state — activate 'ADB Sideload' on the phone screen, then click Refresh Devices.");
+            ui.small(i18n::t("flash.sl_recovery_hint"));
         }
 
         if ui
             .add_enabled_ui(can_sideload, |ui| {
-                ui_elements::accent_button(ui, "Start ADB Sideload", colors::ACCENT_GREEN)
+                ui_elements::accent_button(
+                    ui,
+                    i18n::t("flash.sl_start_btn"),
+                    colors::ACCENT_GREEN,
+                )
             })
             .inner
             .clicked()
@@ -1445,59 +1478,60 @@ impl FlashDialog {
     }
 
     fn render_generator_tab(&mut self, ui: &mut egui::Ui) {
-        ui.label(
-            "Scan a folder of partition images (.img), compute SHA-256 digests, and generate a manifest.json.",
-        );
+        ui.label(i18n::t("flash.gen_desc"));
 
         ui.horizontal(|ui| {
-            ui.label("Folder Path:");
+            ui.label(i18n::t("flash.gen_folder"));
             ui.add(
                 egui::TextEdit::singleline(&mut self.gen_folder)
                     .desired_width(ui.available_width() - 90.0),
             );
-            if ui.button("Browse…").clicked() {
+            if ui.button(i18n::t("common.browse")).clicked() {
                 self.pick_path(PickTarget::GeneratorFolder);
             }
         });
 
         ui.horizontal_wrapped(|ui| {
-            ui.label("Product (Device Codename):");
+            ui.label(i18n::t("flash.gen_product"));
             ui.add(egui::TextEdit::singleline(&mut self.gen_product).desired_width(180.0));
             if let Some(Ok(dev)) = &self.device_info {
-                if ui.button(format!("Use '{}'", dev.product)).clicked() {
+                if ui
+                    .button(i18n::tf("flash.gen_use_product", &[("product", &dev.product)]))
+                    .clicked()
+                {
                     self.gen_product = dev.product.clone();
                 }
             }
         });
 
         ui.horizontal(|ui| {
-            ui.label("Build Identifier:");
+            ui.label(i18n::t("flash.gen_build"));
             ui.add(egui::TextEdit::singleline(&mut self.gen_build).desired_width(180.0));
         });
 
         ui.horizontal_wrapped(|ui| {
-            ui.label("Fastboot Mode:");
+            ui.label(i18n::t("flash.gen_mode"));
             ui.radio_value(
                 &mut self.gen_mode,
                 "bootloader".into(),
-                "bootloader (boot / recovery / dtbo / vbmeta / super)",
+                i18n::t("flash.gen_mode_bl"),
             );
             ui.radio_value(
                 &mut self.gen_mode,
                 "fastbootd".into(),
-                "fastbootd (dynamic system / vendor / product)",
+                i18n::t("flash.gen_mode_fbd"),
             );
         });
 
         ui.horizontal_wrapped(|ui| {
-            ui.label("A/B Slot Suffix:");
+            ui.label(i18n::t("flash.gen_slot"));
             ui.radio_value(
                 &mut self.gen_slot,
                 SlotTarget::None,
-                "None (non-A/B or already suffixed)",
+                i18n::t("flash.gen_slot_none"),
             );
-            ui.radio_value(&mut self.gen_slot, SlotTarget::SlotA, "Slot _a");
-            ui.radio_value(&mut self.gen_slot, SlotTarget::SlotB, "Slot _b");
+            ui.radio_value(&mut self.gen_slot, SlotTarget::SlotA, i18n::t("flash.gen_slot_a"));
+            ui.radio_value(&mut self.gen_slot, SlotTarget::SlotB, i18n::t("flash.gen_slot_b"));
         });
 
         let can_generate = !self.gen_folder.trim().is_empty()
@@ -1505,10 +1539,7 @@ impl FlashDialog {
             && !self.gen_build.trim().is_empty();
 
         if ui
-            .add_enabled(
-                can_generate,
-                egui::Button::new("Generate manifest.json from Folder"),
-            )
+            .add_enabled(can_generate, egui::Button::new(i18n::t("flash.gen_btn")))
             .clicked()
         {
             self.start_generate_manifest();
@@ -1518,24 +1549,32 @@ impl FlashDialog {
             match res {
                 Ok((m, p)) => {
                     ui.group(|ui| {
+                        let path_s = p.display().to_string();
                         ui.label(
-                            egui::RichText::new(format!("Success! Saved: {}", p.display()))
+                            egui::RichText::new(i18n::tf("flash.gen_ok", &[("path", &path_s)]))
                                 .color(egui::Color32::GREEN),
                         );
-                        ui.label(format!(
-                            "Product: {} | Build: {} | Mode: {}",
-                            m.product, m.build, m.mode
+                        ui.label(i18n::tf(
+                            "flash.gen_meta",
+                            &[
+                                ("product", &m.product),
+                                ("build", &m.build),
+                                ("mode", &m.mode),
+                            ],
                         ));
                         for img in &m.images {
                             ui.label(format!("• {} ← {}", img.partition, img.file));
                         }
-                        if ui.button("Switch to Full ROM Tab to Flash").clicked() {
+                        if ui.button(i18n::t("flash.gen_switch")).clicked() {
                             self.tab = FlashTab::FullRom;
                         }
                     });
                 }
                 Err(err) => {
-                    ui.colored_label(egui::Color32::LIGHT_RED, format!("Error: {err}"));
+                    ui.colored_label(
+                        egui::Color32::LIGHT_RED,
+                        i18n::tf("common.error_prefix", &[("err", err)]),
+                    );
                 }
             }
         }
@@ -1555,32 +1594,22 @@ impl FlashDialog {
             if dev.mode != "bootloader" {
                 ui.colored_label(
                     egui::Color32::YELLOW,
-                    format!(
-                        "Current mode is '{}'. Reboot to Bootloader first before running Stock ROM script.",
-                        dev.mode
-                    ),
+                    i18n::tf("flash.stock_wrong_mode", &[("mode", &dev.mode)]),
                 );
             } else if !dev.unlocked {
                 ui.colored_label(
                     egui::Color32::GREEN,
-                    "Bootloader is already LOCKED on this device.",
+                    i18n::t("flash.stock_already_locked"),
                 );
             }
         }
 
         ui.group(|ui| {
-            ui.label(
-                egui::RichText::new(
-                    "Stock Fastboot ROM Runner (flash_all_lock / flash_all / flash_all_except_storage)",
-                )
-                .strong(),
-            );
-            ui.small(
-                "Parses all script steps & image sizes, enforces Product & Anti-Rollback checks, and tracks sparse chunks + ETA in real time.",
-            );
+            ui.label(egui::RichText::new(i18n::t("flash.stock_title")).strong());
+            ui.small(i18n::t("flash.stock_sub"));
 
             ui.horizontal(|ui| {
-                ui.label("Extracted Stock ROM Folder:");
+                ui.label(i18n::t("flash.stock_folder"));
                 if ui
                     .add(
                         egui::TextEdit::singleline(&mut self.lock_rom_folder)
@@ -1592,7 +1621,7 @@ impl FlashDialog {
                     self.confirm_stock_lock = false;
                     self.lock_confirm_text.clear();
                 }
-                if ui.button("Browse…").clicked() {
+                if ui.button(i18n::t("common.browse")).clicked() {
                     self.pick_path(PickTarget::StockLockFolder);
                 }
             });
@@ -1602,7 +1631,7 @@ impl FlashDialog {
                 if ui
                     .add_enabled(
                         can_inspect,
-                        egui::Button::new("Inspect Stock ROM & Verify Compatibility"),
+                        egui::Button::new(i18n::t("flash.stock_inspect_btn")),
                     )
                     .clicked()
                 {
@@ -1615,7 +1644,7 @@ impl FlashDialog {
                     Ok(info) => {
                         ui.add_space(2.0);
                         ui.horizontal_wrapped(|ui| {
-                            ui.label("Script Mode:");
+                            ui.label(i18n::t("flash.stock_script_mode"));
                             for mode in StockFlashMode::ALL {
                                 let available = info.available_modes.contains(&mode);
                                 let mut selected_mode = self.stock_mode;
@@ -1624,7 +1653,8 @@ impl FlashDialog {
                                     StockFlashMode::CleanAll => egui::Color32::YELLOW,
                                     StockFlashMode::KeepUserData => egui::Color32::LIGHT_GREEN,
                                 };
-                                let label = egui::RichText::new(mode.label()).color(color);
+                                let label =
+                                    egui::RichText::new(i18n::stock_mode_label(mode)).color(color);
                                 ui.add_enabled_ui(available, |ui| {
                                     if ui
                                         .radio_value(&mut selected_mode, mode, label)
@@ -1639,12 +1669,13 @@ impl FlashDialog {
 
                         let mut compat_ok = true;
                         ui.group(|ui| {
+                            let path_s = info.script_path.display().to_string();
+                            let steps_s = info.flash_command_count.to_string();
+                            let size_s = format_bytes_human(info.total_bytes);
                             ui.label(
-                                egui::RichText::new(format!(
-                                    "Script: {} ({} flash steps | {} total)",
-                                    info.script_path.display(),
-                                    info.flash_command_count,
-                                    format_bytes_human(info.total_bytes),
+                                egui::RichText::new(i18n::tf(
+                                    "flash.stock_script_info",
+                                    &[("path", &path_s), ("steps", &steps_s), ("size", &size_s)],
                                 ))
                                 .color(egui::Color32::GREEN),
                             );
@@ -1653,18 +1684,25 @@ impl FlashDialog {
                                 if dev_prod == Some(expected.as_str()) {
                                     ui.colored_label(
                                         egui::Color32::GREEN,
-                                        format!("Product check: MATCH ({expected})"),
+                                        i18n::tf(
+                                            "flash.stock_prod_match",
+                                            &[("expected", expected)],
+                                        ),
                                     );
                                 } else if let Some(actual) = dev_prod {
                                     compat_ok = false;
                                     ui.colored_label(
                                         egui::Color32::LIGHT_RED,
-                                        format!(
-                                            "Product MISMATCH: device is '{actual}', ROM expects '{expected}' (BLOCKED)"
+                                        i18n::tf(
+                                            "flash.stock_prod_mismatch",
+                                            &[("actual", actual), ("expected", expected)],
                                         ),
                                     );
                                 } else {
-                                    ui.label(format!("Expected Product: {expected}"));
+                                    ui.label(i18n::tf(
+                                        "flash.stock_prod_expected",
+                                        &[("expected", expected)],
+                                    ));
                                 }
                             }
                             if let Some(rom_anti) = info.rom_anti_version {
@@ -1673,30 +1711,36 @@ impl FlashDialog {
                                     .and_then(|d| d.anti_rollback.as_deref())
                                     .and_then(|s| s.trim().parse::<u32>().ok());
                                 if let Some(da) = dev_anti {
+                                    let d_s = da.to_string();
+                                    let r_s = rom_anti.to_string();
                                     if da > rom_anti {
                                         compat_ok = false;
                                         ui.colored_label(
                                             egui::Color32::LIGHT_RED,
-                                            format!(
-                                                "Anti-Rollback BLOCKED: device={da} > ROM={rom_anti}"
+                                            i18n::tf(
+                                                "flash.stock_arb_block",
+                                                &[("dev", &d_s), ("rom", &r_s)],
                                             ),
                                         );
                                     } else {
                                         ui.colored_label(
                                             egui::Color32::GREEN,
-                                            format!(
-                                                "Anti-Rollback check: PASS (device={da}, ROM={rom_anti})"
+                                            i18n::tf(
+                                                "flash.stock_arb_pass",
+                                                &[("dev", &d_s), ("rom", &r_s)],
                                             ),
                                         );
                                     }
                                 } else {
-                                    ui.label(format!("ROM Anti-Rollback version: {rom_anti}"));
+                                    let r_s = rom_anti.to_string();
+                                    ui.label(i18n::tf("flash.stock_arb_rom", &[("rom", &r_s)]));
                                 }
                             }
 
-                            egui::CollapsingHeader::new(format!(
-                                "Parsed flash & lock steps ({})",
-                                info.steps.len()
+                            let steps_cnt = info.steps.len().to_string();
+                            egui::CollapsingHeader::new(i18n::tf(
+                                "flash.stock_steps_header",
+                                &[("count", &steps_cnt)],
                             ))
                             .id_salt("stock_parsed_steps_list")
                             .show(ui, |ui| {
@@ -1706,7 +1750,7 @@ impl FlashDialog {
                                     .show(ui, |ui| {
                                         for (idx, step) in info.steps.iter().enumerate() {
                                             let cond = if step.conditional {
-                                                " [conditional]"
+                                                i18n::t("flash.stock_cond")
                                             } else {
                                                 ""
                                             };
@@ -1740,15 +1784,9 @@ impl FlashDialog {
                         });
 
                         let confirm_caption = match info.mode {
-                            StockFlashMode::CleanAllAndLock => {
-                                "I backed up my data, signed out of Mi/Google Account, and accept full Factory Reset + Bootloader Lock."
-                            }
-                            StockFlashMode::CleanAll => {
-                                "I backed up my data and accept full Factory Reset (userdata wipe; bootloader stays Unlocked)."
-                            }
-                            StockFlashMode::KeepUserData => {
-                                "I confirm updating Stock ROM while keeping userdata and keeping bootloader Unlocked."
-                            }
+                            StockFlashMode::CleanAllAndLock => i18n::t("flash.stock_confirm_lock"),
+                            StockFlashMode::CleanAll => i18n::t("flash.stock_confirm_clean"),
+                            StockFlashMode::KeepUserData => i18n::t("flash.stock_confirm_keep"),
                         };
                         ui.checkbox(&mut self.confirm_stock_lock, confirm_caption);
 
@@ -1760,7 +1798,7 @@ impl FlashDialog {
                         let typed_ok = if let Some(word) = required_word {
                             let mut ok = false;
                             ui.horizontal(|ui| {
-                                ui.label(format!("Type {word} to confirm:"));
+                                ui.label(i18n::tf("flash.stock_type_confirm", &[("word", word)]));
                                 ui.add(
                                     egui::TextEdit::singleline(&mut self.lock_confirm_text)
                                         .desired_width(120.0),
@@ -1773,13 +1811,9 @@ impl FlashDialog {
                         };
 
                         let button_text = match info.mode {
-                            StockFlashMode::CleanAllAndLock => {
-                                "Start Flash Stock & Lock Bootloader"
-                            }
-                            StockFlashMode::CleanAll => "Start Flash Stock (Keep Unlocked)",
-                            StockFlashMode::KeepUserData => {
-                                "Start Update Stock (Keep User Data)"
-                            }
+                            StockFlashMode::CleanAllAndLock => i18n::t("flash.stock_btn_lock"),
+                            StockFlashMode::CleanAll => i18n::t("flash.stock_btn_clean"),
+                            StockFlashMode::KeepUserData => i18n::t("flash.stock_btn_keep"),
                         };
 
                         let can_run = is_bootloader_unlocked
@@ -1804,7 +1838,10 @@ impl FlashDialog {
                         }
                     }
                     Err(e) => {
-                        ui.colored_label(egui::Color32::LIGHT_RED, format!("Inspection error: {e}"));
+                        ui.colored_label(
+                            egui::Color32::LIGHT_RED,
+                            i18n::tf("flash.single_inspect_err", &[("err", &e)]),
+                        );
                     }
                 }
             }
@@ -1814,14 +1851,14 @@ impl FlashDialog {
     fn render_lock_bootloader_tab(&mut self, ui: &mut egui::Ui) {
         ui_elements::tool_subcard(ui, Some(colors::ACCENT_RED), |ui| {
             ui.label(
-                egui::RichText::new("WARNING: Stock ROM Flash & Bootloader Lock")
+                egui::RichText::new(i18n::t("flash.lock_warn_title"))
                     .color(colors::ERROR)
                     .strong(),
             );
-            ui.label("• Locking the bootloader or running `flash_all` will ERASE ALL USER DATA (Factory Reset). Back up first.");
-            ui.label("• ONLY lock on 100% matching Stock ROM for your device region (e.g. CN device + CN Stock ROM). Locking on Custom ROM or mismatched region ROM will brick the device.");
-            ui.label("• Sign out of Mi Account (Find Device OFF) & Google Account before locking. Use a USB 2.0 port on AMD PCs.");
-            ui.label("• Device MUST be in `bootloader` mode (not `fastbootd`) and currently `Unlocked`.");
+            ui.label(i18n::t("flash.lock_warn_1"));
+            ui.label(i18n::t("flash.lock_warn_2"));
+            ui.label(i18n::t("flash.lock_warn_3"));
+            ui.label(i18n::t("flash.lock_warn_4"));
         });
 
         ui.add_space(6.0);
@@ -1834,108 +1871,82 @@ impl FlashDialog {
         let is_bootloader_unlocked = dev_ok.is_some_and(|d| d.mode == "bootloader" && d.unlocked);
 
         // Mode B: Direct Fastboot Lock (only if 100% stock is already installed)
-        ui.collapsing(
-            "Option 2 (Advanced): Direct Lock Command (ONLY if full Stock ROM is already installed)",
-            |ui| {
-                ui.small(
-                    "Use only on devices already running 100% unmodified Stock firmware (e.g. Pixel / Motorola / Xiaomi after full stock flash).",
+        ui.collapsing(i18n::t("flash.lock_opt2"), |ui| {
+            ui.small(i18n::t("flash.lock_opt2_note"));
+            ui.horizontal_wrapped(|ui| {
+                ui.label(i18n::t("flash.lock_method"));
+                ui.radio_value(
+                    &mut self.direct_lock_method,
+                    LockMethod::OemLock,
+                    i18n::t("flash.lock_oem"),
                 );
-                ui.horizontal_wrapped(|ui| {
-                    ui.label("Lock Command:");
-                    ui.radio_value(
-                        &mut self.direct_lock_method,
-                        LockMethod::OemLock,
-                        "fastboot oem lock (Xiaomi / OnePlus / OEM)",
-                    );
-                    ui.radio_value(
-                        &mut self.direct_lock_method,
-                        LockMethod::FlashingLock,
-                        "fastboot flashing lock (Pixel / AOSP)",
-                    );
-                });
-                ui.checkbox(
-                    &mut self.confirm_direct_lock,
-                    "I confirm this device is already running 100% unmodified Stock ROM matching its region.",
+                ui.radio_value(
+                    &mut self.direct_lock_method,
+                    LockMethod::FlashingLock,
+                    i18n::t("flash.lock_flashing"),
                 );
-                ui.horizontal(|ui| {
-                    ui.label("Type LOCK to confirm:");
-                    ui.add(
-                        egui::TextEdit::singleline(&mut self.direct_lock_text)
-                            .desired_width(120.0),
-                    );
-                });
-                let typed_ok = self
-                    .direct_lock_text
-                    .trim()
-                    .eq_ignore_ascii_case("LOCK");
-                let can_direct =
-                    is_bootloader_unlocked && self.confirm_direct_lock && typed_ok;
-                if ui
-                    .add_enabled_ui(can_direct, |ui| {
-                        ui_elements::accent_button(
-                            ui,
-                            &format!("Run `{}`", self.direct_lock_method.display_cmd()),
-                            colors::ACCENT_RED,
-                        )
-                    })
-                    .inner
-                    .clicked()
-                {
-                    self.start_direct_lock();
-                }
-            },
-        );
+            });
+            ui.checkbox(
+                &mut self.confirm_direct_lock,
+                i18n::t("flash.lock_direct_confirm"),
+            );
+            ui.horizontal(|ui| {
+                ui.label(i18n::tf("flash.stock_type_confirm", &[("word", "LOCK")]));
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.direct_lock_text)
+                        .desired_width(120.0),
+                );
+            });
+            let typed_ok = self
+                .direct_lock_text
+                .trim()
+                .eq_ignore_ascii_case("LOCK");
+            let can_direct =
+                is_bootloader_unlocked && self.confirm_direct_lock && typed_ok;
+            if ui
+                .add_enabled_ui(can_direct, |ui| {
+                    ui_elements::accent_button(
+                        ui,
+                        &i18n::tf(
+                            "flash.lock_run_cmd",
+                            &[("cmd", self.direct_lock_method.display_cmd())],
+                        ),
+                        colors::ACCENT_RED,
+                    )
+                })
+                .inner
+                .clicked()
+            {
+                self.start_direct_lock();
+            }
+        });
     }
 
     fn render_guide_tab(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        let vi = self.guide_lang == GuideLang::Vi;
-
-        ui.horizontal_wrapped(|ui| {
-            ui.heading(if vi {
-                "Hướng dẫn sử dụng Flash ROM & Fastboot Tools"
-            } else {
-                "Flash ROM & Fastboot Tools Guide"
-            });
-            ui.add_space(12.0);
-            ui.label(if vi { "Ngôn ngữ:" } else { "Language:" });
-            ui.selectable_value(&mut self.guide_lang, GuideLang::Vi, "VI");
-            ui.selectable_value(&mut self.guide_lang, GuideLang::En, "EN");
-        });
-
+        ui.heading(i18n::t("flash.guide_title"));
         ui.add_space(4.0);
 
         // Quick jump buttons
         ui.horizontal_wrapped(|ui| {
-            ui.label(if vi { "Đi nhanh:" } else { "Jump to:" });
-            if ui.small_button("Full ROM Manifest").clicked() {
+            ui.label(i18n::t("flash.guide_jump"));
+            if ui.small_button(i18n::t("flash.tab_full")).clicked() {
                 self.tab = FlashTab::FullRom;
             }
-            if ui.small_button("Single Partition / Boot").clicked() {
+            if ui.small_button(i18n::t("flash.tab_single")).clicked() {
                 self.tab = FlashTab::SinglePartition;
             }
-            if ui.small_button("ADB Sideload (ZIP)").clicked() {
+            if ui.small_button(i18n::t("flash.tab_sideload")).clicked() {
                 self.tab = FlashTab::AdbSideload;
             }
-            if ui.small_button("Manifest Generator").clicked() {
+            if ui.small_button(i18n::t("flash.tab_gen")).clicked() {
                 self.tab = FlashTab::ManifestGenerator;
             }
-            if ui.small_button("Stock ROM & Lock").clicked() {
+            if ui.small_button(i18n::t("flash.tab_stock_lock")).clicked() {
                 self.tab = FlashTab::LockBootloader;
             }
-            if ui
-                .small_button(if vi {
-                    "Copy mẫu manifest.json"
-                } else {
-                    "Copy Sample manifest.json"
-                })
-                .clicked()
-            {
+            if ui.small_button(i18n::t("flash.guide_copy_sample")).clicked() {
                 ctx.copy_text(SAMPLE_MANIFEST_JSON.to_string());
-                self.status = if vi {
-                    "Đã copy mẫu manifest.json vào clipboard.".into()
-                } else {
-                    "Copied sample manifest.json to clipboard.".into()
-                };
+                self.status = i18n::t("flash.guide_copied").into();
                 self.error = false;
             }
         });
@@ -1945,174 +1956,80 @@ impl FlashDialog {
         // Safety checklist
         ui.group(|ui| {
             ui.label(
-                egui::RichText::new(if vi {
-                    "Checklist an toàn trước khi Flash"
-                } else {
-                    "Pre-Flash Safety Checklist"
-                })
-                .color(egui::Color32::YELLOW)
-                .strong(),
+                egui::RichText::new(i18n::t("flash.guide_checklist_title"))
+                    .color(egui::Color32::YELLOW)
+                    .strong(),
             );
-            if vi {
-                ui.label("• Pin điện thoại nên >= 50% (xem dòng Battery OK ở phần thông tin thiết bị).");
-                ui.label("• Sao lưu dữ liệu quan trọng trước (có thể dùng nút Backup / Transfer… trên Dashboard).");
-                ui.label("• Bootloader bắt buộc ở trạng thái Unlocked. Module này KHÔNG tự unlock bootloader và KHÔNG chạy lệnh erase/format userdata.");
-                ui.label("• Dùng cáp USB tốt, cắm trực tiếp vào cổng USB máy tính; tuyệt đối không rút cáp khi đang ghi.");
-                ui.label("• Mọi thao tác flash/sideload đều được ghi nhật ký (journal log) — bấm 'Open Logs Folder' để xem lại.");
-            } else {
-                ui.label("• Keep battery >= 50% (check 'Battery OK' in the device info bar).");
-                ui.label("• Back up important data first (you can use 'Backup / Transfer…' in Dashboard).");
-                ui.label("• Bootloader must be Unlocked. This module NEVER unlocks bootloaders or runs erase/format userdata.");
-                ui.label("• Use a reliable USB cable plugged directly into the PC; never disconnect during a write.");
-                ui.label("• Every flash/sideload session writes a journal log — click 'Open Logs Folder' to inspect.");
-            }
+            ui.label("• Pin điện thoại nên >= 50% (xem dòng Pin ổn định ở thanh thông tin thiết bị).");
+            ui.label("• Sao lưu dữ liệu quan trọng trước (có thể dùng nút Sao lưu / Truyền tệp… trên Dashboard).");
+            ui.label("• Bootloader bắt buộc ở trạng thái Đã mở khóa. Công cụ KHÔNG tự unlock bootloader và KHÔNG chạy lệnh xóa phân vùng dữ liệu ngoài ý muốn.");
+            ui.label("• Dùng cáp USB tốt, cắm trực tiếp vào cổng USB máy tính; tuyệt đối không rút cáp khi đang ghi.");
+            ui.label("• Mọi thao tác flash/sideload đều được ghi nhật ký — bấm 'Mở thư mục Log' để xem lại.");
         });
 
         ui.add_space(4.0);
 
-        egui::CollapsingHeader::new(if vi {
-            "1. Full ROM Manifest — Flash trọn bộ ROM từ manifest.json"
-        } else {
-            "1. Full ROM Manifest — Flash a full ROM via manifest.json"
-        })
-        .default_open(true)
-        .show(ui, |ui| {
-            if vi {
-                ui.label("1. Đưa máy vào chế độ Bootloader hoặc Fastbootd (dùng mục 'Reboot, A/B Slot & Tool Paths' hoặc phím cứng) rồi bấm 'Refresh Devices'.");
-                ui.label("2. Nếu thư mục ROM chỉ có các file .img và chưa có manifest.json, sang tab 'Manifest Generator' để tạo trước.");
-                ui.label("3. Chọn (Browse…) hoặc kéo-thả file manifest.json vào cửa sổ.");
-                ui.label("4. Bấm 'Verify & Prepare Plan': tool sẽ đối chiếu product, mode, dung lượng phân vùng và toàn bộ mã SHA-256.");
+        egui::CollapsingHeader::new("1. ROM đầy đủ (Manifest) — Flash trọn bộ ROM từ manifest.json")
+            .default_open(true)
+            .show(ui, |ui| {
+                ui.label("1. Đưa máy vào chế độ Bootloader hoặc Fastbootd (dùng mục 'Khởi động lại, Slot A/B & Đường dẫn công cụ' hoặc phím cứng) rồi bấm 'Làm mới thiết bị'.");
+                ui.label("2. Nếu thư mục ROM chỉ có các file .img và chưa có manifest.json, sang tab 'Tạo Manifest' để tạo trước.");
+                ui.label("3. Chọn (Duyệt…) hoặc kéo-thả file manifest.json vào cửa sổ.");
+                ui.label("4. Bấm 'Kiểm tra & Lập kế hoạch': tool sẽ đối chiếu mã máy, chế độ, dung lượng phân vùng và toàn bộ mã SHA-256.");
                 ui.label("5. Nếu flash Custom ROM/GSI có vbmeta, bật thêm '--disable-verity' và '--disable-verification' nếu cần.");
-                ui.label("6. Tick xác nhận và bấm 'Start Full ROM Flash'. Khi hoàn tất, máy giữ nguyên ở Fastboot để bạn kiểm tra log rồi tự reboot.");
-            } else {
-                ui.label("1. Boot the device into Bootloader or Fastbootd (via 'Reboot, A/B Slot & Tool Paths' or hardware keys) and click 'Refresh Devices'.");
-                ui.label("2. If your ROM folder only has .img files without manifest.json, create one first in the 'Manifest Generator' tab.");
-                ui.label("3. Browse or drag & drop manifest.json into this window.");
-                ui.label("4. Click 'Verify & Prepare Plan': the tool checks product, mode, partition sizes, and every SHA-256 digest.");
-                ui.label("5. For Custom ROMs/GSIs with vbmeta, optionally enable '--disable-verity' and '--disable-verification'.");
-                ui.label("6. Check the confirmation box and click 'Start Full ROM Flash'. The device stays in Fastboot after completion so you can review logs before rebooting.");
-            }
-        });
+                ui.label("6. Tick xác nhận và bấm 'Bắt đầu Flash ROM đầy đủ'. Khi hoàn tất, máy giữ nguyên ở Fastboot để bạn kiểm tra log rồi tự khởi động lại.");
+            });
 
-        egui::CollapsingHeader::new(if vi {
-            "2. Single Partition / Boot — Flash lẻ 1 phân vùng hoặc Boot tạm (RAM)"
-        } else {
-            "2. Single Partition / Boot — Flash a single partition or Temporary Boot"
-        })
-        .show(ui, |ui| {
-            if vi {
+        egui::CollapsingHeader::new("2. Phân vùng lẻ / Boot tạm — Flash lẻ 1 phân vùng hoặc Boot tạm (RAM)")
+            .show(ui, |ui| {
                 ui.label("• Phù hợp khi cài Magisk (boot/init_boot), Custom Recovery (recovery/vendor_boot), dtbo, vbmeta hoặc super.");
                 ui.label("• Trên máy A/B, chọn rõ phân vùng có hậu tố _a hoặc _b (ví dụ boot_a, init_boot_b). Tool tự gợi ý theo slot đang chạy.");
-                ui.label("• Bấm 'Inspect Image & Compute SHA-256' để kiểm tra dung lượng, định dạng Raw/Sparse và mã SHA-256.");
-                ui.label("• Nút 'Temporary Boot (fastboot boot)': chạy thử boot.img hoặc recovery.img trực tiếp trên RAM mà KHÔNG ghi đè flash (rất an toàn để test).");
-            } else {
-                ui.label("• Ideal for flashing Magisk (boot/init_boot), Custom Recovery (recovery/vendor_boot), dtbo, vbmeta, or super.");
-                ui.label("• On A/B devices, always pick an explicit _a or _b partition (e.g. boot_a, init_boot_b). Quick presets adapt to the active slot.");
-                ui.label("• Click 'Inspect Image & Compute SHA-256' to check size, Raw/Sparse format, and SHA-256.");
-                ui.label("• 'Temporary Boot (fastboot boot)' boots a boot/recovery image in RAM once without writing to flash storage.");
-            }
-        });
+                ui.label("• Bấm 'Kiểm tra ảnh & Tính SHA-256' để kiểm tra dung lượng, định dạng Raw/Sparse và mã SHA-256.");
+                ui.label("• Nút 'Khởi động tạm (fastboot boot)': chạy thử boot.img hoặc recovery.img trực tiếp trên RAM mà KHÔNG ghi đè flash (rất an toàn để test).");
+            });
 
-        egui::CollapsingHeader::new(if vi {
-            "3. ADB Sideload (ZIP) — Cài Custom ROM / OTA qua Recovery"
-        } else {
-            "3. ADB Sideload (ZIP) — Flash Custom ROM / OTA via Recovery"
-        })
-        .show(ui, |ui| {
-            if vi {
+        egui::CollapsingHeader::new("3. ADB Sideload (ZIP) — Cài Custom ROM / OTA qua Recovery")
+            .show(ui, |ui| {
                 ui.label("1. Khởi động máy vào Recovery (TWRP, OrangeFox, Lineage Recovery hoặc Stock Recovery hỗ trợ sideload).");
                 ui.label("2. Trên điện thoại, chọn 'Apply update' → 'Apply from ADB' (hoặc 'ADB Sideload').");
-                ui.label("3. Bấm 'Refresh Devices' — thiết bị sẽ hiện ở tab ADB Sideload với trạng thái '(sideload)'.");
-                ui.label("4. Chọn hoặc kéo-thả file .zip, có thể bấm 'Inspect ZIP & Compute SHA-256' để đối chiếu checksum.");
-                ui.label("5. Tick xác nhận và bấm 'Start ADB Sideload'. Theo dõi phần trăm tiến độ realtime ở thanh progress.");
-            } else {
-                ui.label("1. Reboot into Recovery (TWRP, OrangeFox, Lineage Recovery, or stock recovery with sideload support).");
-                ui.label("2. On the phone, choose 'Apply update' → 'Apply from ADB' (or 'ADB Sideload').");
-                ui.label("3. Click 'Refresh Devices' — the device should appear with '(sideload)' state.");
-                ui.label("4. Browse or drag & drop the .zip package, and optionally inspect its SHA-256 checksum.");
-                ui.label("5. Confirm and click 'Start ADB Sideload'. Live progress percentage is streamed to the progress bar.");
-            }
-        });
+                ui.label("3. Bấm 'Làm mới thiết bị' — thiết bị sẽ hiện ở tab ADB Sideload với trạng thái '(sideload)'.");
+                ui.label("4. Chọn hoặc kéo-thả file .zip, có thể bấm 'Kiểm tra ZIP & Tính SHA-256' để đối chiếu checksum.");
+                ui.label("5. Tick xác nhận và bấm 'Bắt đầu ADB Sideload'. Theo dõi phần trăm tiến độ trực tiếp trên thanh tiến trình.");
+            });
 
-        egui::CollapsingHeader::new(if vi {
-            "4. Manifest Generator — Tự tạo manifest.json từ thư mục .img"
-        } else {
-            "4. Manifest Generator — Generate manifest.json from an .img folder"
-        })
-        .show(ui, |ui| {
-            if vi {
+        egui::CollapsingHeader::new("4. Tạo Manifest — Tự tạo manifest.json từ thư mục .img")
+            .show(ui, |ui| {
                 ui.label("• Chọn hoặc kéo-thả thư mục chứa các file .img (tên file trùng tên phân vùng, ví dụ boot.img, dtbo.img, vbmeta.img, super.img).");
-                ui.label("• Nhập Product (hoặc bấm nút 'Use ...' để lấy trực tiếp từ máy đang cắm), nhập tên Build và chọn Mode.");
-                ui.label("• Với máy A/B, chọn 'A/B Slot Suffix' là 'Slot _a' hoặc 'Slot _b' (tool tự giữ nguyên tên 'super' và các file đã có _a/_b).");
-                ui.label("• Bấm 'Generate manifest.json from Folder' → sau khi xong, bấm 'Switch to Full ROM Tab to Flash'.");
-            } else {
-                ui.label("• Browse or drag & drop a folder of .img files (filenames matching partition names, e.g. boot.img, dtbo.img, vbmeta.img, super.img).");
-                ui.label("• Enter Product (or click 'Use ...' from the connected device), Build identifier, and Fastboot Mode.");
-                ui.label("• For A/B devices, select 'Slot _a' or 'Slot _b' (non-slotted 'super' and already-suffixed files are preserved).");
-                ui.label("• Click 'Generate manifest.json from Folder', then switch to the Full ROM tab to verify and flash.");
-            }
-        });
+                ui.label("• Nhập Mã máy (hoặc bấm nút 'Lấy từ máy ...' đang cắm), nhập Mã bản dựng và chọn Chế độ Fastboot.");
+                ui.label("• Với máy A/B, chọn 'Hậu tố Slot A/B' là 'Slot _a' hoặc 'Slot _b' (tool tự giữ nguyên tên 'super' và các file đã có _a/_b).");
+                ui.label("• Bấm 'Tạo manifest.json từ thư mục' → sau khi xong, bấm 'Chuyển sang tab ROM đầy đủ để Flash'.");
+            });
 
-        egui::CollapsingHeader::new(if vi {
-            "5. Stock ROM & Lock Bootloader (flash_all_lock / flash_all / flash_all_except_storage)"
-        } else {
-            "5. Stock ROM & Lock Bootloader (flash_all_lock / flash_all / flash_all_except_storage)"
-        })
-        .show(ui, |ui| {
-            if vi {
-                ui.label("• Chọn hoặc kéo-thả thư mục ROM Fastboot Stock (chứa flash_all_lock.bat / flash_all.bat / flash_all_except_storage.bat và thư mục images/).");
-                ui.label("• 3 chế độ: Clean All & Lock (xóa dữ liệu + khóa bootloader), Clean All (xóa dữ liệu, giữ unlocked), Keep User Data (giữ dữ liệu + giữ unlocked).");
-                ui.label("• Trước khi chạy, công cụ kiểm tra Product codename, Anti-Rollback, trạng thái Unlocked, chế độ bootloader và pin; trong lúc chạy sẽ hiển thị chunk sparse (vd super 3/11), phân vùng đang ghi, danh sách còn lại và ETA.");
-                ui.label("• LƯU Ý KHÓA BOOTLOADER: Thoát Mi Account (tắt Find Device) & Google Account, dùng đúng ROM Stock cùng vùng máy (VD: máy nội địa CN dùng CN Stock ROM), cắm cổng USB 2.0 ổn định trên PC AMD.");
-                ui.label("• Option 2 (Direct Lock Command): chỉ dùng khi máy đã chạy 100% Stock ROM nguyên bản đúng vùng.");
-            } else {
-                ui.label("• Browse or drag & drop an extracted Stock Fastboot ROM folder (containing flash_all_lock / flash_all / flash_all_except_storage and images/).");
-                ui.label("• 3 modes: Clean All & Lock (wipes userdata + locks bootloader), Clean All (wipes userdata, keeps unlocked), Keep User Data (preserves userdata + keeps unlocked).");
-                ui.label("• Pre-flight gates verify product codename, anti-rollback version, bootloader mode, unlocked state, and battery; live progress tracks sparse chunks (e.g. super 3/11), active partition, remaining list, and ETA.");
-                ui.label("• LOCK WARNING: Sign out of Mi Account (Find Device OFF) & Google Account, use 100% matching region Stock ROM, and prefer USB 2.0 ports on AMD PCs.");
-                ui.label("• Option 2 (Direct Lock Command): use only if the device is already running 100% unmodified regional Stock firmware.");
-            }
-        });
+        egui::CollapsingHeader::new("5. ROM Gốc & Khóa Bootloader (flash_all_lock / flash_all / flash_all_except_storage)")
+            .show(ui, |ui| {
+                ui.label("• Chọn hoặc kéo-thả thư mục ROM Fastboot Gốc (chứa flash_all_lock.bat / flash_all.bat / flash_all_except_storage.bat và thư mục images/).");
+                ui.label("• 3 chế độ: Xóa sạch & Khóa Bootloader, Xóa sạch giữ Mở khóa, và Cập nhật giữ dữ liệu người dùng.");
+                ui.label("• Trước khi chạy, công cụ kiểm tra Mã máy, Anti-Rollback, trạng thái Đã mở khóa, chế độ bootloader và pin; trong lúc chạy sẽ hiển thị chunk sparse (vd super 3/11), phân vùng đang ghi, danh sách còn lại và thời gian dự kiến.");
+                ui.label("• LƯU Ý KHÓA BOOTLOADER: Thoát Mi Account (tắt Tìm thiết bị) & Google Account, dùng đúng ROM Gốc cùng vùng máy (VD: máy nội địa China dùng ROM Gốc China), cắm cổng USB 2.0 ổn định trên PC AMD.");
+                ui.label("• Tùy chọn 2 (Nâng cao - Lệnh khóa trực tiếp): chỉ dùng khi máy đã chạy 100% ROM Gốc nguyên bản đúng vùng.");
+            });
 
-        egui::CollapsingHeader::new(if vi {
-            "6. Phân biệt Bootloader vs Fastbootd & Quản lý A/B Slot"
-        } else {
-            "6. Bootloader vs Fastbootd & A/B Slot Reference"
-        })
-        .show(ui, |ui| {
-            if vi {
-                ui.label("• bootloader mode: Flash phân vùng phần cứng / khởi động — boot, init_boot, vendor_boot, vendor_kernel_boot, dtbo, recovery, vbmeta*, super.");
-                ui.label("• fastbootd mode (userspace): Flash phân vùng động nằm trong super — system, system_ext, vendor, product, odm, *_dlkm.");
+        egui::CollapsingHeader::new("6. Phân biệt Bootloader vs Fastbootd & Quản lý Slot A/B")
+            .show(ui, |ui| {
+                ui.label("• Chế độ bootloader: Flash phân vùng phần cứng / khởi động — boot, init_boot, vendor_boot, vendor_kernel_boot, dtbo, recovery, vbmeta*, super.");
+                ui.label("• Chế độ fastbootd (userspace): Flash phân vùng động nằm trong super — system, system_ext, vendor, product, odm, *_dlkm.");
                 ui.label("• Các phân vùng nguy hiểm (userdata, metadata, persist, abl, xbl...) luôn bị chặn để tránh hard-brick / mất dữ liệu.");
-                ui.label("• A/B Active Slot: Chỉ chuyển giữa Slot A và Slot B khi chắc chắn slot kia có bản ROM khởi động được.");
-            } else {
-                ui.label("• bootloader mode: Hardware/boot partitions — boot, init_boot, vendor_boot, vendor_kernel_boot, dtbo, recovery, vbmeta*, super.");
-                ui.label("• fastbootd mode (userspace): Logical dynamic partitions inside super — system, system_ext, vendor, product, odm, *_dlkm.");
-                ui.label("• Dangerous partitions (userdata, metadata, persist, abl, xbl...) are always blocked to prevent hard-bricks and data loss.");
-                ui.label("• A/B Active Slot: Switch between Slot A and Slot B only when you know the target slot contains a bootable image.");
-            }
-        });
+                ui.label("• Slot A/B đang kích hoạt: Chỉ chuyển giữa Slot A và Slot B khi chắc chắn slot kia có bản ROM khởi động được.");
+            });
 
-        egui::CollapsingHeader::new(if vi {
-            "7. Xử lý sự cố thường gặp (Troubleshooting)"
-        } else {
-            "7. Common Troubleshooting"
-        })
-        .show(ui, |ui| {
-            if vi {
+        egui::CollapsingHeader::new("7. Xử lý sự cố thường gặp")
+            .show(ui, |ui| {
                 ui.label("• Không thấy máy ở Fastboot trên Windows: Cài Google USB Driver / driver của hãng (Xiaomi, Pixel, Motorola…) và kiểm tra Device Manager (Android Bootloader Interface).");
-                ui.label("• Lỗi 'Cannot start fastboot': Mở mục 'Reboot, A/B Slot & Tool Paths' và trỏ trực tiếp tới fastboot.exe trong Android SDK platform-tools.");
+                ui.label("• Lỗi 'Cannot start fastboot': Mở mục 'Khởi động lại, Slot A/B & Đường dẫn công cụ' và trỏ trực tiếp tới fastboot.exe trong Android SDK platform-tools.");
                 ui.label("• Lỗi 'Choose an explicit _a or _b partition': Thiết bị dùng A/B slot — hãy chọn boot_a/boot_b thay vì boot, hoặc chọn Slot _a/_b khi tạo manifest.");
-                ui.label("• Lỗi 'Device product or mode does not match': Kiểm tra đúng ROM cho mã máy (codename) và đúng chế độ bootloader/fastbootd.");
-                ui.label("• Lỗi giữa chừng khi đang flash: KHÔNG tự reboot ngay! Xem Console Output / Journal log, kiểm tra cáp USB và flash lại phân vùng bị lỗi trước khi khởi động lại.");
-            } else {
-                ui.label("• Fastboot device not detected on Windows: Install Google USB Driver / OEM driver and check Device Manager for 'Android Bootloader Interface'.");
-                ui.label("• 'Cannot start fastboot': Open 'Reboot, A/B Slot & Tool Paths' and point directly to platform-tools/fastboot.exe.");
-                ui.label("• 'Choose an explicit _a or _b partition': Device uses A/B slots — pick boot_a/boot_b instead of boot, or set Slot _a/_b in Manifest Generator.");
-                ui.label("• 'Device product or mode does not match': Verify the ROM matches your device codename and you are in the required mode (bootloader vs fastbootd).");
-                ui.label("• Write failed mid-flash: Do NOT reboot immediately. Review Console Output and the journal log, check the USB cable, and re-flash the failed partition first.");
-            }
-        });
+                ui.label("• Lỗi 'Device product or mode does not match': Kiểm tra đúng ROM cho mã máy và đúng chế độ bootloader/fastbootd.");
+                ui.label("• Lỗi giữa chừng khi đang flash: KHÔNG tự reboot ngay! Xem Nhật ký lệnh / Nhật ký ghi, kiểm tra cáp USB và flash lại phân vùng bị lỗi trước khi khởi động lại.");
+            });
     }
 
     // ---- Background task starters ----
@@ -2126,7 +2043,7 @@ impl FlashDialog {
         let tx = self.tx.clone();
         self.pending_bg_tasks += 1;
         self.progress_percent = Some(0.0);
-        self.status = "Verifying manifest and computing SHA-256 checksums…".into();
+        self.status = i18n::t("flash.status_verifying_plan").into();
         self.error = false;
         std::thread::spawn(move || {
             let tx_prog = tx.clone();
@@ -2141,11 +2058,11 @@ impl FlashDialog {
         let path = PathBuf::from(self.single_image_path.trim());
         let tx = self.tx.clone();
         self.pending_bg_tasks += 1;
-        self.status = "Inspecting image and computing SHA-256…".into();
+        self.status = i18n::t("flash.status_inspecting_img").into();
         self.error = false;
         std::thread::spawn(move || {
             let res = if !path.is_file() {
-                Err("File does not exist or is not a regular file".into())
+                Err(i18n::t("flash.err_not_regular_file").into())
             } else {
                 fs::metadata(&path)
                     .map_err(|e| e.to_string())
@@ -2163,11 +2080,11 @@ impl FlashDialog {
         let path = PathBuf::from(self.sideload_zip_path.trim());
         let tx = self.tx.clone();
         self.pending_bg_tasks += 1;
-        self.status = "Inspecting ZIP and computing SHA-256…".into();
+        self.status = i18n::t("flash.status_inspecting_zip").into();
         self.error = false;
         std::thread::spawn(move || {
             let res = if !path.is_file() {
-                Err("File does not exist or is not a regular file".into())
+                Err(i18n::t("flash.err_not_regular_file").into())
             } else {
                 fs::metadata(&path)
                     .map_err(|e| e.to_string())
@@ -2189,7 +2106,7 @@ impl FlashDialog {
         let tx = self.tx.clone();
         self.pending_bg_tasks += 1;
         self.progress_percent = Some(0.0);
-        self.status = "Scanning folder and hashing .img files…".into();
+        self.status = i18n::t("flash.status_scanning_folder").into();
         self.error = false;
         std::thread::spawn(move || {
             let tx_prog = tx.clone();
@@ -2209,49 +2126,60 @@ impl FlashDialog {
 
     fn run_adb_reboot(&mut self, serial: String, target: Option<&'static str>) {
         self.pending_bg_tasks += 1;
-        self.status = format!("ADB: Rebooting {serial} to {}…", target.unwrap_or("system"));
+        let t_str = target.unwrap_or("system");
+        self.status = i18n::tf(
+            "flash.status_adb_rebooting",
+            &[("serial", &serial), ("target", t_str)],
+        );
         self.error = false;
         let tx = self.tx.clone();
         std::thread::spawn(move || {
             let res = Adb::reboot(Some(&serial), target)
                 .map(|_| {
-                    format!(
-                        "ADB reboot ({}) sent to {serial}.",
-                        target.unwrap_or("system")
+                    i18n::tf(
+                        "flash.status_adb_reboot_ok",
+                        &[("target", t_str), ("serial", &serial)],
                     )
                 })
-                .map_err(|e| format!("ADB reboot failed: {}", e.user_message()));
+                .map_err(|e| {
+                    let err_s = i18n::adb_error_vi(&e.user_message());
+                    i18n::tf("flash.status_adb_reboot_fail", &[("err", &err_s)])
+                });
             let _ = tx.send(FlashEvent::QuickActionDone(res));
         });
     }
 
     fn run_fastboot_reboot(&mut self, serial: String, target: &'static str) {
         self.pending_bg_tasks += 1;
-        self.status = format!(
-            "Fastboot: Rebooting {serial} to {}…",
-            if target.is_empty() { "system" } else { target }
+        let t_str = if target.is_empty() { "system" } else { target };
+        self.status = i18n::tf(
+            "flash.status_fb_rebooting",
+            &[("serial", &serial), ("target", t_str)],
         );
         self.error = false;
         let fb_bin = self.fastboot_override();
         let tx = self.tx.clone();
         std::thread::spawn(move || {
             let res = flash::reboot_with_bin(fb_bin.as_deref(), Some(&serial), target)
-                .map(|t| format!("Fastboot reboot: {}", t.trim()))
-                .map_err(|e| format!("Fastboot reboot error: {e}"));
+                .map(|t| i18n::tf("flash.status_fb_reboot_ok", &[("msg", t.trim())]))
+                .map_err(|e| i18n::tf("flash.status_fb_reboot_fail", &[("err", &e)]));
             let _ = tx.send(FlashEvent::QuickActionDone(res));
         });
     }
 
     fn run_set_active_slot(&mut self, serial: String, slot: &'static str) {
         self.pending_bg_tasks += 1;
-        self.status = format!("Switching active slot to '{slot}' on {serial}…");
+        self.status = i18n::tf(
+            "flash.status_setting_slot",
+            &[("slot", slot), ("serial", &serial)],
+        );
         self.error = false;
         let fb_bin = self.fastboot_override();
         let tx = self.tx.clone();
         std::thread::spawn(move || {
             let res = flash::set_active_slot(fb_bin.as_deref(), &serial, slot)
-                .map(|t| format!("Active slot set to '{slot}': {}", t.trim()))
-                .map_err(|e| format!("Slot switch failed: {e}"));
+                .map(|t| i18n::tf("flash.status_slot_ok", &[("slot", slot), ("msg", t.trim())]))
+                .map_err(|e| i18n::tf("flash.status_slot_fail", &[("err", &e)]));
             let _ = tx.send(FlashEvent::QuickActionDone(res));
         });
     }
@@ -2270,7 +2198,7 @@ impl FlashDialog {
         self.stock_progress = None;
         self.error = false;
         self.output = format!(
-            "Starting full ROM flash on {serial}…\nLog: {}\n\n",
+            "Bắt đầu flash trọn bộ ROM trên {serial}…\nLog: {}\n\n",
             log_path.display()
         );
 
@@ -2288,9 +2216,9 @@ impl FlashDialog {
                     let _ = tx_prog.send(FlashEvent::Progress(upd));
                 },
             );
-            let _ = tx.send(FlashEvent::WriteFinished(result.map(|()| {
-                "Full ROM flashed successfully. Reboot manually when ready.".into()
-            })));
+            let _ = tx.send(FlashEvent::WriteFinished(
+                result.map(|()| i18n::t("flash.done_full").into()),
+            ));
         });
     }
 
@@ -2312,7 +2240,7 @@ impl FlashDialog {
         self.stock_progress = None;
         self.error = false;
         self.output = format!(
-            "Starting single partition flash [{partition}] on {serial}…\nFile: {}\nLog: {}\n\n",
+            "Bắt đầu flash phân vùng [{partition}] trên {serial}…\nTệp: {}\nLog: {}\n\n",
             path.display(),
             log_path.display()
         );
@@ -2333,10 +2261,9 @@ impl FlashDialog {
                     let _ = tx_prog.send(FlashEvent::Progress(upd));
                 },
             );
-            let _ =
-                tx.send(FlashEvent::WriteFinished(result.map(|()| {
-                    format!("Partition {partition} flashed successfully.")
-                })));
+            let _ = tx.send(FlashEvent::WriteFinished(
+                result.map(|()| i18n::tf("flash.done_single", &[("part", &partition)])),
+            ));
         });
     }
 
@@ -2357,7 +2284,7 @@ impl FlashDialog {
         self.stock_progress = None;
         self.error = false;
         self.output = format!(
-            "Starting temporary boot (`fastboot boot`) on {serial}…\nFile: {}\nLog: {}\n\n",
+            "Bắt đầu khởi động tạm (`fastboot boot`) trên {serial}…\nTệp: {}\nLog: {}\n\n",
             path.display(),
             log_path.display()
         );
@@ -2371,7 +2298,7 @@ impl FlashDialog {
                     let _ = tx_prog.send(FlashEvent::Progress(upd));
                 });
             let _ = tx.send(FlashEvent::WriteFinished(
-                result.map(|()| "Temporary image booted.".into()),
+                result.map(|()| i18n::t("flash.done_temp_boot").into()),
             ));
         });
     }
@@ -2393,7 +2320,7 @@ impl FlashDialog {
         self.stock_progress = None;
         self.error = false;
         self.output = format!(
-            "Starting ADB sideload on {serial}…\nFile: {}\nLog: {}\n\n",
+            "Bắt đầu ADB Sideload trên {serial}…\nTệp: {}\nLog: {}\n\n",
             path.display(),
             log_path.display()
         );
@@ -2407,7 +2334,7 @@ impl FlashDialog {
                     let _ = tx_prog.send(FlashEvent::Progress(upd));
                 });
             let _ = tx.send(FlashEvent::WriteFinished(
-                result.map(|()| "ADB sideload completed.".into()),
+                result.map(|()| i18n::t("flash.done_sideload").into()),
             ));
         });
     }
@@ -2416,7 +2343,7 @@ impl FlashDialog {
         let folder = PathBuf::from(self.lock_rom_folder.trim());
         let tx = self.tx.clone();
         self.pending_bg_tasks += 1;
-        self.status = "Inspecting Stock ROM scripts & image sizes…".into();
+        self.status = i18n::t("flash.status_inspecting_stock").into();
         self.error = false;
         std::thread::spawn(move || {
             let res = flash::inspect_stock_rom_folder(&folder);
@@ -2428,7 +2355,10 @@ impl FlashDialog {
         let folder = PathBuf::from(self.lock_rom_folder.trim());
         let tx = self.tx.clone();
         self.pending_bg_tasks += 1;
-        self.status = format!("Inspecting {}…", mode.script_name());
+        self.status = i18n::tf(
+            "flash.status_inspecting_script",
+            &[("script", mode.script_name())],
+        );
         self.error = false;
         std::thread::spawn(move || {
             let res = flash::inspect_stock_rom_script(&folder, mode);
@@ -2452,8 +2382,8 @@ impl FlashDialog {
         self.stock_progress = None;
         self.error = false;
         self.output = format!(
-            "Starting {} on {serial}…\nScript: {}\nLog: {}\n\n",
-            info.mode.label(),
+            "Bắt đầu {} trên {serial}…\nKịch bản: {}\nLog: {}\n\n",
+            i18n::stock_mode_label(info.mode),
             info.script_path.display(),
             log_path.display()
         );
@@ -2473,9 +2403,9 @@ impl FlashDialog {
                 },
             );
             let done_msg = if locks_bl {
-                "Stock ROM flashed and bootloader locked successfully.".into()
+                i18n::t("flash.done_stock_locked").into()
             } else {
-                "Stock ROM flashed successfully (bootloader kept unlocked).".into()
+                i18n::t("flash.done_stock_unlocked").into()
             };
             let _ = tx.send(FlashEvent::WriteFinished(result.map(|()| done_msg)));
         });
@@ -2498,7 +2428,7 @@ impl FlashDialog {
         self.stock_progress = None;
         self.error = false;
         self.output = format!(
-            "Starting Direct Bootloader Lock (`{}`) on {serial}…\nLog: {}\n\n",
+            "Bắt đầu khóa Bootloader trực tiếp (`{}`) trên {serial}…\nLog: {}\n\n",
             method.display_cmd(),
             log_path.display()
         );
@@ -2511,9 +2441,9 @@ impl FlashDialog {
                 flash::lock_bootloader(fb_bin.as_deref(), &serial, method, &log_path, move |upd| {
                     let _ = tx_prog.send(FlashEvent::Progress(upd));
                 });
-            let _ = tx.send(FlashEvent::WriteFinished(
-                result.map(|()| format!("`{}` completed.", method.display_cmd())),
-            ));
+            let _ = tx.send(FlashEvent::WriteFinished(result.map(|()| {
+                i18n::tf("flash.done_direct_lock", &[("cmd", method.display_cmd())])
+            })));
         });
     }
 
@@ -2533,40 +2463,45 @@ fn native_pick_path(target: PickTarget) -> Option<String> {
     use std::process::{Command, Stdio};
 
     let script = match target {
-        PickTarget::GeneratorFolder => {
+        PickTarget::GeneratorFolder => format!(
             "Add-Type -AssemblyName System.Windows.Forms; \
              $d = New-Object System.Windows.Forms.FolderBrowserDialog; \
-             $d.Description = 'Select ROM images folder'; \
-             if ($d.ShowDialog() -eq 'OK') { [Console]::Out.Write($d.SelectedPath) }"
-        }
-        PickTarget::StockLockFolder => {
+             $d.Description = '{}'; \
+             if ($d.ShowDialog() -eq 'OK') {{ [Console]::Out.Write($d.SelectedPath) }}",
+            i18n::t("flash.pick_gen_folder")
+        ),
+        PickTarget::StockLockFolder => format!(
             "Add-Type -AssemblyName System.Windows.Forms; \
              $d = New-Object System.Windows.Forms.FolderBrowserDialog; \
-             $d.Description = 'Select extracted Stock ROM folder (with flash_all_lock.bat)'; \
-             if ($d.ShowDialog() -eq 'OK') { [Console]::Out.Write($d.SelectedPath) }"
-        }
-        PickTarget::ManifestJson => {
+             $d.Description = '{}'; \
+             if ($d.ShowDialog() -eq 'OK') {{ [Console]::Out.Write($d.SelectedPath) }}",
+            i18n::t("flash.pick_stock_folder")
+        ),
+        PickTarget::ManifestJson => format!(
             "Add-Type -AssemblyName System.Windows.Forms; \
              $d = New-Object System.Windows.Forms.OpenFileDialog; \
-             $d.Filter = 'Manifest JSON (*.json)|*.json|All files (*.*)|*.*'; \
-             if ($d.ShowDialog() -eq 'OK') { [Console]::Out.Write($d.FileName) }"
-        }
-        PickTarget::SingleImage => {
+             $d.Filter = '{}'; \
+             if ($d.ShowDialog() -eq 'OK') {{ [Console]::Out.Write($d.FileName) }}",
+            i18n::t("flash.pick_manifest")
+        ),
+        PickTarget::SingleImage => format!(
             "Add-Type -AssemblyName System.Windows.Forms; \
              $d = New-Object System.Windows.Forms.OpenFileDialog; \
-             $d.Filter = 'Partition Image (*.img)|*.img|All files (*.*)|*.*'; \
-             if ($d.ShowDialog() -eq 'OK') { [Console]::Out.Write($d.FileName) }"
-        }
-        PickTarget::SideloadZip => {
+             $d.Filter = '{}'; \
+             if ($d.ShowDialog() -eq 'OK') {{ [Console]::Out.Write($d.FileName) }}",
+            i18n::t("flash.pick_img")
+        ),
+        PickTarget::SideloadZip => format!(
             "Add-Type -AssemblyName System.Windows.Forms; \
              $d = New-Object System.Windows.Forms.OpenFileDialog; \
-             $d.Filter = 'ROM / OTA ZIP (*.zip)|*.zip|All files (*.*)|*.*'; \
-             if ($d.ShowDialog() -eq 'OK') { [Console]::Out.Write($d.FileName) }"
-        }
+             $d.Filter = '{}'; \
+             if ($d.ShowDialog() -eq 'OK') {{ [Console]::Out.Write($d.FileName) }}",
+            i18n::t("flash.pick_zip")
+        ),
     };
 
     let out = Command::new("powershell")
-        .args(["-NoProfile", "-STA", "-Command", script])
+        .args(["-NoProfile", "-STA", "-Command", &script])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())

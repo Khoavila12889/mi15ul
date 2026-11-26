@@ -64,12 +64,16 @@ crates/
     src/hyperos.rs  # HyperOS China Fix, .mtz -> .mrm/.mrc packager, Safe Debloat
   ai-insight/       # error clustering and Chat Completions client
   android-dashboard/ # GUI application (eframe/egui)
+    assets/i18n/vi.json   # Bộ từ điển Việt hóa 100% toàn bộ giao diện
+    src/i18n.rs           # Loader từ điển Việt hóa (hỗ trợ ghi đè i18n/vi.json cạnh .exe)
     src/panels/hyperos.rs # Giao diện HyperOS China Fix & Việt Hóa
 themes/             # 5 gói theme .mtz Việt hóa + metadata_template.json
 hyperos-pc-tool/    # Công cụ độc lập Python Tkinter GUI / CLI (Run_HyperOS_PC_Tool.bat)
-ADVANCED_TOOLS.md   # Tài liệu Advanced Tools, APK Installer, Stock Flash & Lock
+ADVANCED_TOOLS.md   # Tài liệu Công cụ nâng cao, Cài APK, Stock Flash & Lock
 ZALO_CLEANUP.md     # Tài liệu Dọn ảnh và video Zalo theo ngày
 ```
+
+> **Việt hóa giao diện:** Toàn bộ nhãn, nút bấm, menu, hộp thoại và thông báo trạng thái đã được Việt hóa tập trung trong `crates/android-dashboard/assets/i18n/vi.json`. Khi chạy bản release, bạn có thể tạo tệp `i18n/vi.json` cạnh `android-dashboard.exe` để tùy chỉnh câu chữ mà không cần biên dịch lại.
 
 ## How to Use the Dashboard
 

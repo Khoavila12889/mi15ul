@@ -1,6 +1,7 @@
 use adb_client::DeviceState;
 use eframe::egui;
 
+use crate::i18n;
 use crate::roster::DeviceRoster;
 use crate::theme;
 use crate::ui_elements;
@@ -22,7 +23,7 @@ pub fn devices_panel(
     ui_elements::panel_with_custom_footer(
         ui,
         icon,
-        "Devices",
+        i18n::t("panel.devices"),
         |_| {},
         |ui| {
             selected = show_devices_body(ui, roster);
@@ -40,19 +41,19 @@ pub fn devices_panel(
 
 fn show_devices_body(ui: &mut egui::Ui, roster: &DeviceRoster) -> Option<String> {
     if let Some(error) = &roster.adb_error {
-        ui_elements::error_label(ui, "ADB not available");
-        ui.label(error);
+        ui_elements::error_label(ui, i18n::t("devices.adb_not_available"));
+        ui.label(i18n::adb_error_vi(error));
         return None;
     }
 
     if let Some(error) = &roster.list_error {
-        ui_elements::error_label(ui, error);
+        ui_elements::error_label(ui, i18n::adb_error_vi(error));
     }
 
     if roster.devices.is_empty() {
         if !roster.list_job_in_flight {
-            ui.label("No devices found.");
-            ui.label("Connect and unlock your phone, enable USB debugging, then click Check ADB. Charging alone does not confirm an ADB connection.");
+            ui.label(i18n::t("devices.none_found"));
+            ui.label(i18n::t("devices.connect_hint"));
         }
         return None;
     }
@@ -70,7 +71,12 @@ fn show_devices_body(ui: &mut egui::Ui, roster: &DeviceRoster) -> Option<String>
                     let is_selected =
                         roster.selected_serial.as_deref() == Some(device.serial.as_str());
                     let model = if device.model.is_empty() { &device.serial } else { &device.model };
-                    let label = format!("{}\n{}\nADB connected", model, device.display_details());
+                    let label = format!(
+                        "{}\n{}\n{}",
+                        model,
+                        device.display_details(),
+                        i18n::t("devices.adb_connected")
+                    );
 
                     if device.state == DeviceState::Device {
                         let color = if is_selected {
@@ -93,26 +99,17 @@ fn show_devices_body(ui: &mut egui::Ui, roster: &DeviceRoster) -> Option<String>
                                 "{}\n{} ({})",
                                 model,
                                 device.serial,
-                                device_state_label(&device.state)
+                                i18n::device_state(&device.state)
                             ));
                         });
                         ui.label(match &device.state {
-                            DeviceState::Offline => "ADB sees this connection but cannot communicate. Reconnect USB or restart the phone. For Wi-Fi, check the current debugging IP and port.",
-                            DeviceState::Unauthorized => "Unlock the phone and accept the RSA debugging prompt. USB debugging being enabled is not enough.",
-                            _ => "Connection is not ready. Check the device and try Check ADB again.",
+                            DeviceState::Offline => i18n::t("devices.hint_offline"),
+                            DeviceState::Unauthorized => i18n::t("devices.hint_unauthorized"),
+                            _ => i18n::t("devices.hint_other"),
                         });
                     }
                 }
             });
         });
     selected
-}
-
-fn device_state_label(state: &DeviceState) -> &str {
-    match state {
-        DeviceState::Device => "device",
-        DeviceState::Offline => "offline",
-        DeviceState::Unauthorized => "unauthorized",
-        DeviceState::Other(value) => value,
-    }
 }

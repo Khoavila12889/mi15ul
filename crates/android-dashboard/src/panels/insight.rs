@@ -3,6 +3,7 @@ use std::collections::VecDeque;
 use eframe::egui;
 
 use crate::app::{InsightController, InsightStatus};
+use crate::i18n;
 use crate::insight::InsightReply;
 use crate::theme;
 use crate::ui_elements;
@@ -15,9 +16,9 @@ pub fn insight_panel(ui: &mut egui::Ui, insight: &InsightController, auto_scroll
     ui_elements::panel_body(ui, theme::colors::INSIGHT_BODY, |ui| {
         if let Some(path) = ai_insight::history_path() {
             ui.horizontal_wrapped(|ui| {
-                ui.small("Insight history (JSONL)")
+                ui.small(i18n::t("insight.history_label"))
                     .on_hover_text(path.display().to_string());
-                if ui.small_button("Copy log path").clicked() {
+                if ui.small_button(i18n::t("insight.copy_log_path")).clicked() {
                     ui.ctx().copy_text(path.display().to_string());
                 }
             });
@@ -25,18 +26,20 @@ pub fn insight_panel(ui: &mut egui::Ui, insight: &InsightController, auto_scroll
         if insight.state.replies.is_empty() {
             match insight.state.status {
                 InsightStatus::RequestFailed => {
-                    ui.label(insight.state.last_failure.as_deref().unwrap_or(
-                        "The app received an error from the ai provider. Check your configuration in the settings panel",
-                    ));
+                    ui.label(
+                        insight
+                            .state
+                            .last_failure
+                            .as_deref()
+                            .unwrap_or(i18n::t("insight.default_error")),
+                    );
                 }
                 InsightStatus::Idle | InsightStatus::RequestSent => {
                     if insight.config().is_configured() {
-                        ui.label(format!(
-                            "Using {}. Waiting for new errors…",
-                            insight.config().engine.label()
-                        ));
+                        let engine = i18n::insight_engine_label(insight.config().engine);
+                        ui.label(i18n::tf("insight.waiting", &[("engine", engine)]));
                     } else {
-                        ui.label("To see ai insights, configure the ai provider info in Settings");
+                        ui.label(i18n::t("insight.not_configured"));
                     }
                 }
             }
@@ -55,10 +58,7 @@ pub fn insight_panel(ui: &mut egui::Ui, insight: &InsightController, auto_scroll
                         ui.separator();
                         ui.add_space(REPLY_SEPARATOR_GAP);
                     }
-                    ui.label(format!(
-                        "Response from ai provider at: {}",
-                        reply.received_at
-                    ));
+                    ui.label(i18n::tf("insight.response_at", &[("time", &reply.received_at)]));
                     if !reply.body.is_empty() {
                         ui.label(reply.body.as_str());
                     }

@@ -1,5 +1,6 @@
 mod app;
 mod format;
+mod i18n;
 mod insight;
 mod insight_store;
 mod layout;
@@ -79,9 +80,10 @@ impl eframe::App for TerminalApp {
                 ui.horizontal_wrapped(|ui| {
                     let apk_q = self.inner.apk.queue_len();
                     let apk_label = if apk_q > 0 {
-                        format!("Install APK ({apk_q})…")
+                        let count = apk_q.to_string();
+                        i18n::tf("app.toolbar_install_apk_count", &[("count", &count)])
                     } else {
-                        "Install APK…".to_string()
+                        i18n::t("app.toolbar_install_apk").to_string()
                     };
                     if ui_elements::toolbar_button(
                         ui,
@@ -95,7 +97,7 @@ impl eframe::App for TerminalApp {
                     }
                     if ui_elements::toolbar_button(
                         ui,
-                        "Advanced Tools…",
+                        i18n::t("app.toolbar_advanced_tools"),
                         self.tools.open,
                         None,
                     )
@@ -108,7 +110,7 @@ impl eframe::App for TerminalApp {
                     }
                     if ui_elements::toolbar_button(
                         ui,
-                        "Backup / Transfer…",
+                        i18n::t("app.toolbar_backup_transfer"),
                         self.inner.backup.open,
                         None,
                     )
@@ -118,7 +120,7 @@ impl eframe::App for TerminalApp {
                     }
                     if ui_elements::toolbar_button(
                         ui,
-                        "Flash ROM…",
+                        i18n::t("app.toolbar_flash_rom"),
                         self.inner.flash.open,
                         None,
                     )
@@ -129,7 +131,7 @@ impl eframe::App for TerminalApp {
                     }
                     if ui_elements::toolbar_button(
                         ui,
-                        "Stock Flash & Lock…",
+                        i18n::t("app.toolbar_stock_flash_lock"),
                         false,
                         Some(theme::colors::ACCENT_AMBER),
                     )
@@ -141,7 +143,7 @@ impl eframe::App for TerminalApp {
                     }
                     if ui_elements::toolbar_button(
                         ui,
-                        "HyperOS China Fix & Việt Hóa…",
+                        i18n::t("app.toolbar_hyperos"),
                         self.inner.hyperos.open || self.inner.hyperos.is_busy(),
                         Some(theme::colors::ACCENT_BLUE),
                     )
@@ -151,7 +153,7 @@ impl eframe::App for TerminalApp {
                     }
                     if ui_elements::toolbar_button(
                         ui,
-                        "AI Provider…",
+                        i18n::t("app.toolbar_ai_provider"),
                         false,
                         None,
                     )
@@ -172,7 +174,7 @@ impl eframe::App for TerminalApp {
                             } else {
                                 ui_elements::status_pill(
                                     ui,
-                                    "○ No ADB device",
+                                    i18n::t("app.no_adb_device"),
                                     theme::colors::TEXT_MUTED,
                                 );
                             }
@@ -261,7 +263,7 @@ fn main() -> eframe::Result<()> {
     #[allow(unused_mut)]
     let mut viewport = eframe::egui::ViewportBuilder::default()
         .with_inner_size(theme::DEFAULT_WINDOW_SIZE)
-        .with_title("Android Debug Dashboard")
+        .with_title(i18n::t("app.title"))
         .with_icon(icon);
     #[cfg(target_os = "macos")]
     {
@@ -278,7 +280,7 @@ fn main() -> eframe::Result<()> {
     };
 
     eframe::run_native(
-        "Android Debug Dashboard",
+        i18n::t("app.title"),
         options,
         Box::new(|cc| {
             theme::configure(&cc.egui_ctx);
