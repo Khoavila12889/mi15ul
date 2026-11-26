@@ -170,6 +170,7 @@ impl LayoutSaver {
     }
 
     /// Drops a pending write without saving.
+    #[allow(dead_code)]
     pub(crate) fn clear_dirty(&mut self) {
         self.dirty = false;
     }

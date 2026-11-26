@@ -1,0 +1,365 @@
+use adb_client::transfer::{
+    self, RemoteFolder, TransferDirection, TransferEvent, TransferJob, TransferRequest,
+};
+use crossbeam_channel::Receiver;
+use eframe::egui;
+use std::path::PathBuf;
+use std::time::Instant;
+
+struct Listing {
+    serial: String,
+    path: String,
+    result: Result<Vec<RemoteFolder>, String>,
+}
+
+pub struct BackupDialog {
+    pub open: bool,
+    serial: Option<String>,
+    remote: String,
+    local: String,
+    folders: Vec<RemoteFolder>,
+    local_folders: Vec<PathBuf>,
+    listing: Option<Receiver<Listing>>,
+    job: Option<TransferJob>,
+    request: Option<TransferRequest>,
+    started: Option<Instant>,
+    compression: bool,
+    status: String,
+    output: String,
+    error: bool,
+    manifest: Option<PathBuf>,
+}
+
+impl Default for BackupDialog {
+    fn default() -> Self {
+        Self {
+            open: false,
+            serial: None,
+            remote: "/sdcard".into(),
+            local: dirs::home_dir()
+                .unwrap_or_default()
+                .join("Android Backups")
+                .display()
+                .to_string(),
+            folders: Vec::new(),
+            local_folders: Vec::new(),
+            listing: None,
+            job: None,
+            request: None,
+            started: None,
+            compression: true,
+            status: "Choose folders, then copy in either direction.".into(),
+            output: String::new(),
+            error: false,
+            manifest: None,
+        }
+    }
+}
+
+impl BackupDialog {
+    pub fn bind_device(&mut self, serial: Option<&str>) {
+        if self.serial.as_deref() != serial {
+            if let Some(job) = &self.job {
+                job.cancel();
+            }
+            self.serial = serial.map(str::to_owned);
+            self.folders.clear();
+            self.listing = None;
+            self.remote = "/sdcard".into();
+            if self.open {
+                self.refresh_remote();
+            }
+        }
+    }
+
+    fn refresh_remote(&mut self) {
+        let Some(serial) = self.serial.clone() else {
+            return;
+        };
+        let path = self.remote.clone();
+        let (tx, rx) = crossbeam_channel::bounded(1);
+        self.folders.clear();
+        self.listing = Some(rx);
+        std::thread::spawn(move || {
+            let result = transfer::list_remote_folders(&serial, &path);
+            let _ = tx.send(Listing {
+                serial,
+                path,
+                result,
+            });
+        });
+    }
+
+    fn refresh_local(&mut self) {
+        let path = PathBuf::from(&self.local);
+        if !path.is_absolute() {
+            self.local_folders.clear();
+            return;
+        }
+        if !path.exists() {
+            self.local_folders.clear();
+            self.status = format!(
+                "Folder '{}' does not exist yet (will be created automatically when backup starts).",
+                path.display()
+            );
+            self.error = false;
+            return;
+        }
+        match transfer::local_folders(&path) {
+            Ok(folders) => {
+                self.local_folders = folders;
+                if self.error && (self.status.contains("does not exist") || self.status.contains("os error")) {
+                    self.error = false;
+                    self.status = "Choose folders, then copy in either direction.".into();
+                }
+            }
+            Err(error) => {
+                self.local_folders.clear();
+                self.fail(error);
+            }
+        }
+    }
+
+    fn fail(&mut self, message: String) {
+        self.status = message;
+        self.error = true;
+    }
+
+    pub fn tick(&mut self) -> bool {
+        let mut changed = false;
+        if let Some(result) = self.listing.as_ref().and_then(|rx| rx.try_recv().ok()) {
+            self.listing = None;
+            if self.serial.as_deref() == Some(&result.serial) && self.remote == result.path {
+                match result.result {
+                    Ok(folders) => self.folders = folders,
+                    Err(e) => self.fail(e),
+                }
+            }
+            changed = true;
+        }
+        let events: Vec<_> = self
+            .job
+            .as_ref()
+            .map(|j| j.rx.try_iter().collect())
+            .unwrap_or_default();
+        for event in events {
+            changed = true;
+            match event {
+                TransferEvent::Output(text) => {
+                    self.output.push_str(&text.replace('\r', "\n"));
+                    if self.output.len() > 32000 {
+                        self.output = self
+                            .output
+                            .chars()
+                            .rev()
+                            .take(16000)
+                            .collect::<String>()
+                            .chars()
+                            .rev()
+                            .collect();
+                    }
+                }
+                TransferEvent::Finished(result) => {
+                    self.job = None;
+                    self.error = result.is_err();
+                    let success = result.is_ok();
+                    self.status = result.unwrap_or_else(|e| e);
+                    if let (Some(path), Some(request)) = (&self.manifest, &self.request) {
+                        let record = serde_json::json!({"status": if success {"completed"} else {"incomplete"},
+                            "direction": format!("{:?}", request.direction), "device": request.serial,
+                            "phone": request.remote, "pc": request.local, "compression": request.compression,
+                            "finished_at": chrono::Local::now().to_rfc3339(), "result": self.status});
+                        if let Err(e) = std::fs::write(
+                            path,
+                            serde_json::to_vec_pretty(&record).unwrap_or_default(),
+                        ) {
+                            self.status
+                                .push_str(&format!(" Manifest could not be saved: {e}"));
+                        }
+                    }
+                    self.refresh_local();
+                }
+            }
+        }
+        changed
+    }
+
+    fn start(&mut self, direction: TransferDirection) {
+        let Some(serial) = self.serial.clone() else {
+            return;
+        };
+        if let Err(e) = transfer::validate_remote(&self.remote) {
+            self.fail(e);
+            return;
+        }
+        let local = PathBuf::from(&self.local);
+        if !local.is_absolute() {
+            self.fail("Enter an absolute PC folder path".into());
+            return;
+        }
+        let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S-%3f").to_string();
+        let token = format!("{stamp}-{}", std::process::id());
+        let mut request = TransferRequest {
+            serial,
+            direction,
+            remote: self.remote.clone(),
+            local: local.clone(),
+            compression: self.compression,
+        };
+        if direction == TransferDirection::Pull {
+            if let Err(e) = std::fs::create_dir_all(&local) {
+                self.fail(format!("Cannot create destination folder '{}': {e}", local.display()));
+                return;
+            }
+            let snapshot = local.join(format!("backup-{token}"));
+            if let Err(e) = std::fs::create_dir(&snapshot) {
+                self.fail(format!("Cannot create backup subfolder '{}': {e}", snapshot.display()));
+                return;
+            }
+            self.manifest = Some(snapshot.join("transfer-manifest.json"));
+            request.local = snapshot;
+        } else {
+            if !local.is_dir() {
+                self.fail("Select an existing PC source folder".into());
+                return;
+            }
+            request.remote = format!("{}/from-pc-{token}", self.remote.trim_end_matches('/'));
+            self.manifest = ai_insight::history_path()
+                .and_then(|p| p.parent().map(|p| p.join(format!("transfer-{token}.json"))));
+            if let Some(parent) = self.manifest.as_ref().and_then(|p| p.parent()) {
+                if let Err(e) = std::fs::create_dir_all(parent) {
+                    self.fail(e.to_string());
+                    return;
+                }
+            }
+        }
+        // Persist an incomplete marker before starting so interruption never looks successful.
+        if let Some(path) = &self.manifest {
+            let marker = serde_json::json!({"status":"incomplete", "device":request.serial, "phone":request.remote, "pc":request.local, "started_at":chrono::Local::now().to_rfc3339()});
+            if let Err(e) = std::fs::write(path, marker.to_string()) {
+                self.fail(format!("Cannot write transfer manifest: {e}"));
+                return;
+            }
+        }
+        self.status = format!(
+            "Copying on {} → {}",
+            request.serial,
+            if direction == TransferDirection::Pull {
+                request.local.display().to_string()
+            } else {
+                request.remote.clone()
+            }
+        );
+        self.output.clear();
+        self.error = false;
+        self.started = Some(Instant::now());
+        self.job = Some(TransferJob::start(request.clone()));
+        self.request = Some(request);
+    }
+
+    pub fn show(&mut self, ctx: &egui::Context) {
+        if !self.open {
+            return;
+        }
+        let mut open = self.open;
+        egui::Window::new("Backup & file transfer").open(&mut open).default_size([850.0, 620.0]).min_width(440.0).resizable(true).vscroll(true).show(ctx, |ui| {
+            ui.label(format!("Device: {}  |  ADB file sync", self.serial.as_deref().unwrap_or("No device selected")));
+            ui.label("Copy folders in either direction. Each copy creates a new destination folder.");
+            let busy = self.job.is_some();
+            ui.add_enabled_ui(!busy, |ui| {
+                ui.columns(2, |columns| {
+                    let ui = &mut columns[0];
+                    ui.heading("Phone folder");
+                    ui.add(egui::TextEdit::singleline(&mut self.remote).desired_width(f32::INFINITY));
+                    ui.horizontal_wrapped(|ui| {
+                        if ui.button("Up").clicked() {
+                            self.remote = self.remote.trim_end_matches('/').rsplit_once('/').map(|(p,_)| if p.is_empty() {"/"} else {p}).unwrap_or("/").to_string(); self.refresh_remote();
+                        }
+                        if ui.add_enabled(self.serial.is_some() && self.listing.is_none(), egui::Button::new("Browse / Refresh")).clicked() { self.refresh_remote(); }
+                    });
+                    if self.listing.is_some() { ui.spinner(); }
+                    let mut navigate = None;
+                    egui::ScrollArea::both().id_salt("phone_folders").max_height(210.0).auto_shrink([false,false]).show(ui, |ui| {
+                        for folder in &self.folders { if ui.selectable_label(false, format!("[Folder] {}", folder.name)).on_hover_text(&folder.path).clicked() { navigate = Some(folder.path.clone()); } }
+                    });
+                    if let Some(path) = navigate { self.remote = path; self.refresh_remote(); }
+                    let ui = &mut columns[1];
+                    ui.heading("PC folder");
+                    ui.add(egui::TextEdit::singleline(&mut self.local).desired_width(f32::INFINITY));
+                    ui.horizontal_wrapped(|ui| {
+                        if ui.button("Up").clicked() { if let Some(parent) = PathBuf::from(&self.local).parent() { self.local = parent.display().to_string(); self.refresh_local(); } }
+                        let mut drive = None;
+                        ui.menu_button("Drives", |ui| {
+                            for root in pc_roots() {
+                                if ui.button(root.display().to_string()).clicked() {
+                                    drive = Some(root);
+                                    ui.close_menu();
+                                }
+                            }
+                        });
+                        if let Some(root) = drive {
+                            self.local = root.display().to_string();
+                            self.refresh_local();
+                        }
+                        if ui.button("Browse / Refresh").clicked() { self.refresh_local(); }
+                        let local_p = PathBuf::from(&self.local);
+                        if local_p.is_absolute() && !local_p.exists() {
+                            if ui.button("Create folder").clicked() {
+                                match std::fs::create_dir_all(&local_p) {
+                                    Ok(()) => {
+                                        self.status = format!("Created folder '{}'", local_p.display());
+                                        self.error = false;
+                                        self.refresh_local();
+                                    }
+                                    Err(e) => self.fail(format!("Cannot create folder: {e}")),
+                                }
+                            }
+                        }
+                    });
+                    let mut navigate = None;
+                    egui::ScrollArea::both().id_salt("pc_folders").max_height(210.0).auto_shrink([false,false]).show(ui, |ui| {
+                        for folder in &self.local_folders { if ui.selectable_label(false, format!("[Folder] {}", folder.file_name().unwrap_or_default().to_string_lossy())).on_hover_text(folder.display().to_string()).clicked() { navigate = Some(folder.display().to_string()); } }
+                    });
+                    if let Some(path) = navigate { self.local = path; self.refresh_local(); }
+                });
+                ui.checkbox(&mut self.compression, "Compression: auto negotiate (disable for already compressed media)");
+                ui.horizontal_wrapped(|ui| {
+                    if ui.add_enabled(self.serial.is_some(), egui::Button::new("Backup phone → PC")).clicked() { self.start(TransferDirection::Pull); }
+                    if ui.add_enabled(self.serial.is_some(), egui::Button::new("Copy PC → phone")).clicked() { self.start(TransferDirection::Push); }
+                });
+                ui.small("Copies only folders accessible to ADB. App-private data may require root. Source files are kept.");
+            });
+            ui.separator();
+            if busy {
+                ui.horizontal(|ui| { ui.spinner(); ui.label(format!("Transferring · {:.0}s", self.started.map(|s| s.elapsed().as_secs_f64()).unwrap_or_default()));
+                    if ui.button("Cancel transfer").clicked() { if let Some(job) = &self.job { job.cancel(); } }
+                });
+                ctx.request_repaint_after(std::time::Duration::from_millis(100));
+            }
+            ui.colored_label(if self.error { egui::Color32::LIGHT_RED } else { egui::Color32::LIGHT_BLUE }, &self.status);
+            if let Some(path) = &self.manifest { ui.small(format!("Transfer record: {}", path.display())); }
+            egui::ScrollArea::vertical().id_salt("transfer_output").max_height(140.0).stick_to_bottom(true).show(ui, |ui| { ui.monospace(&self.output); });
+        });
+        self.open = open;
+    }
+}
+
+/// Enumerate drive letters without probing potentially disconnected network drives.
+#[cfg(windows)]
+fn pc_roots() -> Vec<PathBuf> {
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn GetLogicalDrives() -> u32;
+    }
+    // This Win32 call takes no pointers and returns a bit mask of mounted drive letters.
+    let mask = unsafe { GetLogicalDrives() };
+    (0..26)
+        .filter(|i| mask & (1 << i) != 0)
+        .map(|i| PathBuf::from(format!("{}:\\", (b'A' + i as u8) as char)))
+        .collect()
+}
+
+#[cfg(not(windows))]
+fn pc_roots() -> Vec<PathBuf> {
+    vec![PathBuf::from("/")]
+}

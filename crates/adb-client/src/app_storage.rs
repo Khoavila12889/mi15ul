@@ -29,6 +29,8 @@ pub struct PackageStorage {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AppStorageUpdate {
     PackageList(Vec<String>),
+    /// Packages that ship with the system image (`pm list packages -s`).
+    SystemPackages(Vec<String>),
     PackageStorage(PackageStorage),
     ScanComplete,
     Error(String),
@@ -84,6 +86,20 @@ fn run_scan(
     update_tx: &Sender<AppStorageUpdate>,
     stop_rx: &Receiver<()>,
 ) -> Result<(), ()> {
+    match fetch_system_packages(serial) {
+        Ok(system) => {
+            if update_tx
+                .send(AppStorageUpdate::SystemPackages(system))
+                .is_err()
+            {
+                return Err(());
+            }
+        }
+        Err(_) => {
+            // The system flag is cosmetic for the cleanup dialog; keep scanning.
+        }
+    }
+
     let packages = match fetch_package_list(serial) {
         Ok(packages) => packages,
         Err(err) => {
@@ -143,7 +159,15 @@ fn run_scan(
 }
 
 fn fetch_package_list(serial: &str) -> Result<Vec<String>, AdbError> {
-    let output = run_adb_for_serial(serial, &["shell", "pm", "list", "packages"])?;
+    list_packages(serial, &["shell", "pm", "list", "packages"])
+}
+
+fn fetch_system_packages(serial: &str) -> Result<Vec<String>, AdbError> {
+    list_packages(serial, &["shell", "pm", "list", "packages", "-s"])
+}
+
+fn list_packages(serial: &str, args: &[&str]) -> Result<Vec<String>, AdbError> {
+    let output = run_adb_for_serial(serial, args)?;
     let mut packages: Vec<String> = String::from_utf8_lossy(&output.stdout)
         .lines()
         .filter_map(|line| {
@@ -165,7 +189,7 @@ fn fetch_package_storage_batch(
     }
 
     let script = build_batch_script(packages);
-    let output = run_adb_for_serial(serial, &["shell", "sh", "-c", &script])?;
+    let output = run_adb_for_serial(serial, &["shell", &script])?;
     Ok(parse_batch_output(
         &String::from_utf8_lossy(&output.stdout),
         packages,
@@ -179,8 +203,8 @@ fn build_batch_script(packages: &[String]) -> String {
             let quoted = shell_quote(package);
             format!(
                 "pkg={quoted}; \
-                 printf '@PKG@%s\\n' \"$pkg\"; \
-                 cmd package get-package-storage-stats \"$pkg\" 2>/dev/null || true"
+                 printf '@PKG@%s\\n' $pkg; \
+                 cmd package get-package-storage-stats $pkg 2>/dev/null || true"
             )
         })
         .collect::<Vec<_>>()
@@ -318,6 +342,6 @@ code: 500 bytes
     fn batch_script_uses_device_side_pkg_variable() {
         let script = build_batch_script(&["com.android.chrome".to_string()]);
         assert!(script.contains("pkg='com.android.chrome'"));
-        assert!(script.contains("printf '@PKG@%s\\n' \"$pkg\""));
+        assert!(script.contains("printf '@PKG@%s\\n' $pkg"));
     }
 }

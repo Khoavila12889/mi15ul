@@ -117,7 +117,9 @@ pub fn build_snapshot(
     let mut now_lines = Vec::new();
 
     for line in lines {
-        if !mask.contains(line.level) {
+        if !mask.contains(line.level)
+            || crate::is_known_diagnostic_noise(line.level, &line.tag, &line.message)
+        {
             continue;
         }
         if prev_cut.is_some_and(|cut| line.received_at < cut) {

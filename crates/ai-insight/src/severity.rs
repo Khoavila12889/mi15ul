@@ -22,9 +22,26 @@ pub fn is_high_severity(level: char, tag: &str, message: &str) -> bool {
     NEEDLES.iter().any(|needle| message.contains(needle))
 }
 
+/// A narrowly identified vendor success message logged at Error priority.
+/// Keep unknown messages and all fatal/crash evidence visible.
+pub fn is_known_diagnostic_noise(level: char, tag: &str, message: &str) -> bool {
+    level == 'E'
+        && tag.trim() == "MI-SF"
+        && message.trim() == "surfaceflinger setAffinity success"
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn noise_filter_preserves_failures_and_fatal_messages() {
+        assert!(is_known_diagnostic_noise('E', "MI-SF   ", "surfaceflinger setAffinity success"));
+        assert!(!is_known_diagnostic_noise('F', "MI-SF", "surfaceflinger setAffinity success"));
+        assert!(!is_known_diagnostic_noise('E', "MI-SF", "surfaceflinger setAffinity failed"));
+        assert!(!is_known_diagnostic_noise('E', "MI-SF", "surfaceflinger setAffinity success; FATAL EXCEPTION"));
+        assert!(!is_known_diagnostic_noise('E', "HwcComposer", "presentOrValidateDisplay 0 presentFence:-1"));
+    }
 
     #[test]
     fn matches_fatal_level() {

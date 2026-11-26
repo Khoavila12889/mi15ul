@@ -18,6 +18,9 @@ pub enum AdbError {
 
     #[error("failed to parse adb output: {0}")]
     ParseFailed(String),
+
+    #[error("{0}")]
+    PackageActionFailed(String),
 }
 
 impl AdbError {
@@ -30,7 +33,10 @@ impl AdbError {
             AdbError::Io(err) => format!("Failed to run adb: {err}"),
             AdbError::VersionCheckFailed(stderr) => classify_adb_stderr(stderr),
             AdbError::CommandFailed { stderr, .. } => classify_adb_stderr(stderr),
-            AdbError::ParseFailed(message) => format!("Failed to parse device output: {message}"),
+            AdbError::ParseFailed(message) => {
+                format!("Failed to parse device output: {message}")
+            }
+            AdbError::PackageActionFailed(message) => message.clone(),
         }
     }
 }

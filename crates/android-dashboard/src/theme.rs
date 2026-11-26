@@ -36,6 +36,18 @@ pub mod colors {
     /// Selected icon toggle / device list fill.
     pub const SELECTION: Color32 = Color32::from_rgb(72, 78, 88);
 
+    /// Elevated card surfaces & subtle borders for tool windows.
+    pub const SURFACE_CARD: Color32 = Color32::from_rgb(14, 28, 52);
+    pub const SURFACE_SUBCARD: Color32 = Color32::from_rgb(9, 19, 38);
+    pub const BORDER_SUBTLE: Color32 = Color32::from_rgb(42, 64, 96);
+    pub const TEXT_MUTED: Color32 = Color32::from_rgb(148, 163, 184);
+
+    /// Semantic accent colors for action buttons & status pills.
+    pub const ACCENT_BLUE: Color32 = Color32::from_rgb(45, 125, 230);
+    pub const ACCENT_GREEN: Color32 = Color32::from_rgb(38, 152, 72);
+    pub const ACCENT_AMBER: Color32 = Color32::from_rgb(218, 158, 36);
+    pub const ACCENT_RED: Color32 = Color32::from_rgb(208, 56, 56);
+
     pub const ERROR: Color32 = Color32::from_rgb(220, 80, 80);
     pub const LOG_ERROR: Color32 = ERROR;
     pub const LOG_WARNING: Color32 = Color32::from_rgb(220, 180, 60);
@@ -110,6 +122,7 @@ pub const PANEL_CANVAS_MARGIN: i8 = 12;
 pub const TITLE_BAR_HEIGHT: f32 = 36.0;
 
 /// Width of the native traffic-light hit region from the left edge.
+#[allow(dead_code)]
 pub const TRAFFIC_LIGHTS_WIDTH: f32 = 96.0;
 
 /// Default window inner size `[width, height]`.
@@ -172,6 +185,7 @@ pub mod icons {
     }
 
     /// Cog icon.
+    #[allow(dead_code)]
     pub fn cog() -> egui::ImageSource<'static> {
         egui::include_image!("../assets/icons/cog.svg")
     }
@@ -192,6 +206,8 @@ fn apply_shared_style(style: &mut egui::Style) {
     style.spacing.window_margin = egui::Margin::same(PANEL_INNER_PADDING);
     style.spacing.menu_margin = egui::Margin::same(MENU_MARGIN);
     style.spacing.item_spacing = egui::vec2(ITEM_SPACING_X, ITEM_SPACING_Y);
+    style.spacing.button_padding = egui::vec2(10.0, 5.0);
+    style.spacing.indent = 16.0;
 
     let bold = FontFamily::Name("jetbrains_mono_bold".into());
     style.text_styles.insert(
@@ -225,6 +241,8 @@ fn dark_blue_visuals() -> egui::Visuals {
     visuals.code_bg_color = colors::BG_EXTREME;
     visuals.override_text_color = Some(colors::OFF_WHITE);
     visuals.selection.bg_fill = colors::SELECTION;
+    visuals.window_corner_radius = egui::CornerRadius::same(PANEL_CORNER_RADIUS);
+    visuals.window_stroke = egui::Stroke::new(1.0, colors::PANEL_BORDER);
 
     visuals.widgets.noninteractive.bg_fill = colors::BG;
     visuals.widgets.noninteractive.weak_bg_fill = colors::BG;
@@ -234,18 +252,26 @@ fn dark_blue_visuals() -> egui::Visuals {
     visuals.widgets.inactive.bg_fill = colors::BG_WIDGET;
     visuals.widgets.inactive.weak_bg_fill = colors::BG_WIDGET;
     visuals.widgets.inactive.fg_stroke.color = colors::OFF_WHITE;
+    visuals.widgets.inactive.corner_radius = egui::CornerRadius::same(6);
+    visuals.widgets.inactive.bg_stroke = egui::Stroke::new(1.0, colors::BORDER_SUBTLE);
 
     visuals.widgets.hovered.bg_fill = colors::BG_HOVER;
     visuals.widgets.hovered.weak_bg_fill = colors::BG_HOVER;
     visuals.widgets.hovered.fg_stroke.color = colors::OFF_WHITE;
+    visuals.widgets.hovered.corner_radius = egui::CornerRadius::same(6);
+    visuals.widgets.hovered.bg_stroke = egui::Stroke::new(1.0, colors::ACCENT_BLUE);
 
     visuals.widgets.active.bg_fill = colors::BG_HOVER;
     visuals.widgets.active.weak_bg_fill = colors::BG_HOVER;
     visuals.widgets.active.fg_stroke.color = colors::OFF_WHITE;
+    visuals.widgets.active.corner_radius = egui::CornerRadius::same(6);
+    visuals.widgets.active.bg_stroke = egui::Stroke::new(1.0, colors::ACCENT_BLUE);
 
     visuals.widgets.open.bg_fill = colors::BG_WIDGET;
     visuals.widgets.open.weak_bg_fill = colors::BG_WIDGET;
     visuals.widgets.open.fg_stroke.color = colors::OFF_WHITE;
+    visuals.widgets.open.corner_radius = egui::CornerRadius::same(6);
+    visuals.widgets.open.bg_stroke = egui::Stroke::new(1.0, colors::BORDER_SUBTLE);
 
     visuals
 }

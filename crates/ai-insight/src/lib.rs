@@ -1,3 +1,4 @@
+mod cli;
 mod client;
 mod config;
 mod event;
@@ -6,11 +7,13 @@ mod reduce;
 mod severity;
 mod worker;
 
-pub use config::InsightConfig;
+pub use config::{InsightConfig, InsightEngine};
 pub use event::{
     InsightEvent, InsightLine, fold_lines_to_events, is_stack_head, is_stack_head_message,
 };
 pub use fingerprint::{generate_device_label, generate_fingerprint, redact};
 pub use reduce::{InsightSnapshot, LevelMask, build_snapshot, log_snapshot};
-pub use severity::is_high_severity;
+pub use severity::{is_high_severity, is_known_diagnostic_noise};
 pub use worker::{InsightUpdate, spawn_insight};
+mod history;
+pub use history::history_path;

@@ -1,5 +1,11 @@
+pub mod advanced_tools;
+pub mod apk_installer;
+pub mod apps;
+pub mod backup;
 pub mod devices;
 mod donut;
+pub mod flash;
+pub mod hyperos;
 pub mod insight;
 pub mod logcat;
 pub mod network;
@@ -7,3 +13,4 @@ pub mod ram;
 pub mod settings;
 pub mod storage;
 pub mod traffic;
+mod zalo_cleanup;

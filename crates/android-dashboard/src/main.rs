@@ -19,34 +19,167 @@ use egui_tiles::Tree;
 
 use crate::app::App;
 use crate::layout::PanelId;
-use crate::panels::settings::{SettingsAction, SettingsDialog};
+use crate::panels::settings::SettingsAction;
 
 struct TerminalApp {
+    tools: panels::advanced_tools::AdvancedTools,
     inner: App,
     layout_tree: Tree<PanelId>,
     layout_saver: layout_store::LayoutSaver,
-    settings: SettingsDialog,
 }
 
 impl TerminalApp {
     fn new(adb_error: Option<String>) -> Self {
         let should_refresh = adb_error.is_none();
+        let tools = panels::advanced_tools::AdvancedTools::default();
         let mut inner = App::new(adb_error, insight_store::load_or_default());
+        let (adb_path, fb_path) = tools.tool_paths();
+        inner.flash.sync_tool_paths(adb_path, fb_path);
+        inner.apk.sync_adb_path(adb_path);
+        inner.hyperos.sync_adb_path(adb_path);
         if should_refresh {
             inner.refresh_devices();
         }
         Self {
+            tools,
             inner,
             layout_tree: layout_store::load_or_default(),
             layout_saver: layout_store::LayoutSaver::default(),
-            settings: SettingsDialog::default(),
         }
     }
 }
 
 impl eframe::App for TerminalApp {
-    fn update(&mut self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &eframe::egui::Context, _frame: &mut eframe::Frame) {
         self.inner.tick(ctx);
+
+        // Global drag-and-drop for .apk / .apks / .xapk / .apkm when no modal drop window owns it.
+        if !self.inner.flash.open && !self.inner.apk.open {
+            let apk_paths: Vec<std::path::PathBuf> = ctx.input(|i| {
+                i.raw
+                    .dropped_files
+                    .iter()
+                    .filter_map(|f| f.path.clone())
+                    .filter(|p| adb_client::apk::classify_apk_path(p).is_some())
+                    .collect()
+            });
+            if !apk_paths.is_empty() {
+                self.inner.apk.enqueue_paths(apk_paths);
+                self.inner.apk.open = true;
+            }
+        }
+
+        let bar_frame = eframe::egui::Frame::default()
+            .fill(theme::colors::PANEL_BG)
+            .inner_margin(eframe::egui::Margin::symmetric(12, 7));
+        eframe::egui::TopBottomPanel::top("dashboard_actions")
+            .frame(bar_frame)
+            .show_separator_line(true)
+            .show(ctx, |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    let apk_q = self.inner.apk.queue_len();
+                    let apk_label = if apk_q > 0 {
+                        format!("Install APK ({apk_q})…")
+                    } else {
+                        "Install APK…".to_string()
+                    };
+                    if ui_elements::toolbar_button(
+                        ui,
+                        &apk_label,
+                        self.inner.apk.open || self.inner.apk.is_busy(),
+                        Some(theme::colors::ACCENT_GREEN),
+                    )
+                    .clicked()
+                    {
+                        self.inner.apk.open = true;
+                    }
+                    if ui_elements::toolbar_button(
+                        ui,
+                        "Advanced Tools…",
+                        self.tools.open,
+                        None,
+                    )
+                    .clicked()
+                    {
+                        if !self.tools.open && !self.inner.flash.is_busy() {
+                            self.inner.flash.refresh_fastboot_devices();
+                        }
+                        self.tools.open = true;
+                    }
+                    if ui_elements::toolbar_button(
+                        ui,
+                        "Backup / Transfer…",
+                        self.inner.backup.open,
+                        None,
+                    )
+                    .clicked()
+                    {
+                        self.inner.backup.open = true;
+                    }
+                    if ui_elements::toolbar_button(
+                        ui,
+                        "Flash ROM…",
+                        self.inner.flash.open,
+                        None,
+                    )
+                    .clicked()
+                    {
+                        self.inner.flash.open = true;
+                        self.inner.flash.refresh_fastboot_devices();
+                    }
+                    if ui_elements::toolbar_button(
+                        ui,
+                        "Stock Flash & Lock…",
+                        false,
+                        Some(theme::colors::ACCENT_AMBER),
+                    )
+                    .clicked()
+                    {
+                        self.inner
+                            .flash
+                            .open_tab(panels::flash::FlashTab::LockBootloader);
+                    }
+                    if ui_elements::toolbar_button(
+                        ui,
+                        "HyperOS China Fix & Việt Hóa…",
+                        self.inner.hyperos.open || self.inner.hyperos.is_busy(),
+                        Some(theme::colors::ACCENT_BLUE),
+                    )
+                    .clicked()
+                    {
+                        self.inner.hyperos.open = true;
+                    }
+                    if ui_elements::toolbar_button(
+                        ui,
+                        "AI Provider…",
+                        false,
+                        None,
+                    )
+                    .clicked()
+                    {
+                        self.inner.settings.open_from(self.inner.insight.config());
+                    }
+
+                    ui.with_layout(
+                        eframe::egui::Layout::right_to_left(eframe::egui::Align::Center),
+                        |ui| {
+                            if let Some(serial) = &self.inner.roster.selected_serial {
+                                ui_elements::status_pill(
+                                    ui,
+                                    &format!("● {serial}"),
+                                    theme::colors::ACCENT_GREEN,
+                                );
+                            } else {
+                                ui_elements::status_pill(
+                                    ui,
+                                    "○ No ADB device",
+                                    theme::colors::TEXT_MUTED,
+                                );
+                            }
+                        },
+                    );
+                });
+            });
 
         #[cfg(target_os = "macos")]
         {
@@ -60,11 +193,11 @@ impl eframe::App for TerminalApp {
                 }
             }
             if title.open_ai_settings {
-                self.settings.open_from(self.inner.insight.config());
+                self.inner.settings.open_from(self.inner.insight.config());
             }
         }
 
-        if let Some(action) = panels::settings::show(ctx, &mut self.settings) {
+        if let Some(action) = panels::settings::show(ctx, &mut self.inner.settings) {
             match action {
                 SettingsAction::Save(config) => {
                     insight_store::save(&config);
@@ -87,6 +220,24 @@ impl eframe::App for TerminalApp {
                     );
                 });
             });
+        self.inner.cleanup.show(
+            ctx,
+            self.inner.roster.selected_serial.as_deref(),
+            &self.inner.metrics.app_storage,
+        );
+        self.inner.backup.show(ctx);
+        self.inner.apk.show(ctx);
+        self.inner.hyperos.show(ctx);
+        self.inner
+            .flash
+            .show(ctx, self.inner.roster.selected_serial.as_deref());
+        self.tools.show(
+            ctx,
+            self.inner.roster.selected_serial.as_deref(),
+            &mut self.inner.flash,
+            &mut self.inner.apk,
+            &mut self.inner.hyperos,
+        );
         if layout_dirty {
             self.layout_saver.mark_edit();
         }
@@ -107,6 +258,7 @@ fn main() -> eframe::Result<()> {
     let icon = eframe::icon_data::from_png_bytes(include_bytes!("../assets/icons/app.png"))
         .expect("app icon");
 
+    #[allow(unused_mut)]
     let mut viewport = eframe::egui::ViewportBuilder::default()
         .with_inner_size(theme::DEFAULT_WINDOW_SIZE)
         .with_title("Android Debug Dashboard")

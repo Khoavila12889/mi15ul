@@ -121,6 +121,9 @@ dependencies = [
  "anyhow",
  "crossbeam-channel",
  "regex",
+ "serde",
+ "serde_json",
+ "sha2",
  "thiserror 2.0.20",
 ]
 
@@ -158,6 +161,7 @@ name = "ai-insight"
 version = "0.1.0"
 dependencies = [
  "crossbeam-channel",
+ "dirs",
  "regex",
  "serde",
  "serde_json",

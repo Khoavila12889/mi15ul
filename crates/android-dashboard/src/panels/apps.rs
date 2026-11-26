@@ -1,0 +1,680 @@
+//! App cleanup dialog: list installed packages, select junk apps, and remove
+//! them for the primary user. System packages are restored with a single click.
+
+use std::collections::HashSet;
+use std::thread;
+
+use crossbeam_channel::{Receiver, unbounded};
+use eframe::egui;
+
+use crate::format::format_bytes_mb;
+use crate::metrics::PackageStorageState;
+use crate::theme::{self, colors};
+
+/// Packages that must never be offered for removal: removing them can brick
+/// the UI, telephony, permissions, or the default launcher.
+const PROTECTED_PACKAGES: &[&str] = &[
+    "android",
+    "com.android.systemui",
+    "com.android.settings",
+    "com.android.phone",
+    "com.android.shell",
+    "com.android.packageinstaller",
+    "com.google.android.packageinstaller",
+    "com.android.permissioncontroller",
+    "com.google.android.permissioncontroller",
+    "com.android.providers.settings",
+    "com.android.providers.telephony",
+    "com.android.providers.contacts",
+    "com.android.providers.media",
+    "com.android.providers.media.module",
+    "com.android.providers.downloads",
+    "com.android.server.telecom",
+    "com.android.incallui",
+    "com.android.dialer",
+    "com.google.android.dialer",
+    "com.android.contacts",
+    "com.google.android.contacts",
+    "com.android.mms.service",
+    "com.android.messaging",
+    "com.google.android.apps.messaging",
+    "com.android.bluetooth",
+    "com.android.networkstack",
+    "com.google.android.networkstack",
+    "com.android.networkstack.tethering",
+    "com.android.externalstorage",
+    "com.android.documentsui",
+    "com.google.android.documentsui",
+    "com.android.keychain",
+    "com.android.certinstaller",
+    "com.android.webview",
+    "com.google.android.webview",
+    "com.google.android.gms",
+    "com.google.android.gsf",
+    "com.android.vending",
+    "com.miui.home",
+    "com.miui.securitycenter",
+    "com.google.android.apps.nexuslauncher",
+    "com.android.launcher3",
+    "com.sec.android.app.launcher",
+    "com.oplus.launcher",
+    "com.oneplus.launcher",
+    "com.vivo.launcher",
+    "com.bbk.launcher2",
+    "com.huawei.android.launcher",
+    "com.transsion.XOSLauncher",
+];
+
+const WINDOW_WIDTH: f32 = 780.0;
+const WINDOW_HEIGHT: f32 = 560.0;
+const LIST_HEIGHT: f32 = 330.0;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PackageAction {
+    Uninstall,
+    Restore,
+}
+
+impl PackageAction {
+    fn verb(self) -> &'static str {
+        match self {
+            PackageAction::Uninstall => "Removed",
+            PackageAction::Restore => "Restored",
+        }
+    }
+}
+
+enum CleanupEvent {
+    Done {
+        action: PackageAction,
+        package: String,
+        result: Result<(), String>,
+    },
+    Finished {
+        action: PackageAction,
+        succeeded: usize,
+        failed: usize,
+    },
+}
+
+struct Status {
+    text: String,
+    error: bool,
+}
+
+struct Row {
+    package: String,
+    system: bool,
+    size: Option<u64>,
+    protected: bool,
+}
+
+pub struct AppCleanup {
+    pub open: bool,
+    search: String,
+    show_system: bool,
+    selected: HashSet<String>,
+    /// Removed during this session; hidden from the list until rescanned.
+    hidden: HashSet<String>,
+    /// Successfully removed system packages, newest last. User apps cannot be
+    /// restored because their APK is deleted, so they are not listed here.
+    removed: Vec<String>,
+    /// Packages awaiting confirmation.
+    pending: Option<Vec<String>>,
+    /// System packages in the pending batch; only these can be restored.
+    pending_system: HashSet<String>,
+    status: Option<Status>,
+    busy: bool,
+    rx: Option<Receiver<CleanupEvent>>,
+}
+
+impl Default for AppCleanup {
+    fn default() -> Self {
+        Self {
+            open: false,
+            search: String::new(),
+            show_system: true,
+            selected: HashSet::new(),
+            hidden: HashSet::new(),
+            removed: Vec::new(),
+            pending: None,
+            pending_system: HashSet::new(),
+            status: None,
+            busy: false,
+            rx: None,
+        }
+    }
+}
+
+impl AppCleanup {
+    /// Opens the dialog, keeping the current search and selection.
+    pub fn open(&mut self) {
+        self.open = true;
+        self.pending = None;
+        self.pending_system.clear();
+    }
+
+    /// Drops all state, e.g. when the selected device changes.
+    pub fn reset(&mut self) {
+        let rx = self.rx.take();
+        drop(rx);
+        *self = Self::default();
+    }
+
+    /// Applies worker results. Returns true when the UI needs a repaint.
+    pub fn tick(&mut self) -> bool {
+        let mut events = Vec::new();
+        if let Some(rx) = self.rx.as_ref() {
+            while let Ok(event) = rx.try_recv() {
+                events.push(event);
+            }
+        }
+        if events.is_empty() {
+            return false;
+        }
+
+        for event in events {
+            match event {
+                CleanupEvent::Done {
+                    action,
+                    package,
+                    result,
+                } => match result {
+                    Ok(()) => {
+                        if action == PackageAction::Uninstall {
+                            self.hidden.insert(package.clone());
+                            self.selected.remove(&package);
+                            if self.pending_system.contains(&package)
+                                && !self.removed.contains(&package)
+                            {
+                                self.removed.push(package);
+                            }
+                        } else {
+                            self.hidden.remove(&package);
+                            self.removed.retain(|name| name != &package);
+                        }
+                    }
+                    Err(message) => {
+                        self.status = Some(Status {
+                            text: message,
+                            error: true,
+                        });
+                    }
+                },
+                CleanupEvent::Finished {
+                    action,
+                    succeeded,
+                    failed,
+                } => {
+                    self.busy = false;
+                    self.rx = None;
+                    self.status = Some(Status {
+                        text: if failed == 0 {
+                            format!("{} {succeeded} app(s).", action.verb())
+                        } else {
+                            format!("{} {succeeded} app(s), {failed} failed.", action.verb())
+                        },
+                        error: failed > 0,
+                    });
+                    if action == PackageAction::Uninstall {
+                        self.pending = None;
+                        self.pending_system.clear();
+                    }
+                }
+            }
+        }
+        true
+    }
+
+    pub fn show(
+        &mut self,
+        ctx: &egui::Context,
+        serial: Option<&str>,
+        storage: &PackageStorageState,
+    ) {
+        if !self.open {
+            return;
+        }
+
+        let mut open = true;
+        egui::Window::new("App Cleanup")
+            .id(egui::Id::new("app_cleanup"))
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(true)
+            .default_width(WINDOW_WIDTH)
+            .default_height(WINDOW_HEIGHT)
+            .min_width(560.0)
+            .min_height(380.0)
+            .default_pos(egui::pos2(300.0, 110.0))
+            .frame(
+                egui::Frame::default()
+                    .fill(colors::PANEL_BG)
+                    .stroke(egui::Stroke::new(1.0, colors::PANEL_BORDER))
+                    .corner_radius(egui::CornerRadius::same(theme::PANEL_CORNER_RADIUS))
+                    .inner_margin(egui::Margin::same(theme::PANEL_INNER_PADDING)),
+            )
+            .show(ctx, |ui| {
+                if self.pending.is_some() {
+                    self.show_confirmation(ui, serial, storage);
+                } else {
+                    self.show_list(ui, serial, storage);
+                }
+            });
+
+        if !open {
+            self.open = false;
+            self.pending = None;
+            self.pending_system.clear();
+        }
+    }
+
+    fn show_list(
+        &mut self,
+        ui: &mut egui::Ui,
+        serial: Option<&str>,
+        storage: &PackageStorageState,
+    ) {
+        if let Some(serial) = serial {
+            ui.label(
+                egui::RichText::new(format!("Device {serial}"))
+                    .small()
+                    .color(colors::FOOTER_TEXT),
+            );
+        }
+
+        ui.add_space(theme::ITEM_SPACING_Y);
+        ui.horizontal(|ui| {
+            ui.label("Search");
+            ui.add(
+                egui::TextEdit::singleline(&mut self.search)
+                    .hint_text(egui::RichText::new("package name").color(colors::PLACEHOLDER_TEXT))
+                    .desired_width(240.0),
+            );
+            ui.checkbox(&mut self.show_system, "Show system apps");
+            if ui.button("Clear selection").clicked() {
+                self.selected.clear();
+            }
+        });
+        ui.add_space(theme::ITEM_SPACING_Y);
+
+        let rows = self.visible_rows(storage);
+        if rows.is_empty() {
+            ui.label(if storage.packages.is_empty() {
+                "Waiting for the package scan…"
+            } else {
+                "No packages match the current filter."
+            });
+            return;
+        }
+
+        ui.horizontal(|ui| {
+            let selectable: Vec<&str> = rows
+                .iter()
+                .filter(|row| !row.protected)
+                .map(|row| row.package.as_str())
+                .collect();
+            if ui.button("Select all").clicked() {
+                for package in selectable {
+                    self.selected.insert(package.to_string());
+                }
+            }
+            ui.label(
+                egui::RichText::new(format!(
+                    "{}/{} packages",
+                    rows.len(),
+                    storage.packages.len()
+                ))
+                .small()
+                .color(colors::FOOTER_TEXT),
+            );
+            if storage.scanning {
+                ui.spinner();
+            }
+        });
+        ui.add_space(theme::ITEM_SPACING_Y);
+
+        egui::ScrollArea::vertical()
+            .id_salt(egui::Id::new("cleanup_rows"))
+            .auto_shrink([false, false])
+            .max_height(LIST_HEIGHT)
+            .show(ui, |ui| {
+                egui::Grid::new("cleanup_grid")
+                    .num_columns(3)
+                    .spacing([12.0, 4.0])
+                    .striped(true)
+                    .show(ui, |ui| {
+                        for row in &rows {
+                            self.row_ui(ui, row);
+                            ui.end_row();
+                        }
+                    });
+            });
+
+        ui.add_space(theme::ITEM_SPACING_Y);
+        ui.separator();
+        self.show_selection_bar(ui, serial, storage);
+        self.show_status(ui);
+        self.show_removed(ui, serial);
+        self.show_hint(ui);
+    }
+
+    fn row_ui(&mut self, ui: &mut egui::Ui, row: &Row) {
+        let mut checked = self.selected.contains(&row.package);
+        ui.add_enabled_ui(!row.protected && !self.busy, |ui| {
+            if ui.checkbox(&mut checked, "").changed() {
+                if checked {
+                    self.selected.insert(row.package.clone());
+                } else {
+                    self.selected.remove(&row.package);
+                }
+            }
+        });
+        if row.protected {
+            ui.label(
+                egui::RichText::new(&row.package)
+                    .monospace()
+                    .color(colors::FOOTER_TEXT),
+            )
+            .on_hover_text("Protected core package — removal is not allowed");
+        } else {
+            ui.label(egui::RichText::new(&row.package).monospace())
+                .on_hover_text(&row.package);
+        }
+
+        let kind = if row.protected {
+            "core"
+        } else if row.system {
+            "system"
+        } else {
+            "user"
+        };
+        let kind_color = if row.system {
+            colors::LOG_WARNING
+        } else {
+            colors::FOOTER_TEXT
+        };
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new(kind).small().color(kind_color));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.label(match row.size {
+                    Some(bytes) => format_bytes_mb(bytes),
+                    None => "…".to_string(),
+                });
+            });
+        });
+    }
+
+    fn show_selection_bar(
+        &mut self,
+        ui: &mut egui::Ui,
+        serial: Option<&str>,
+        storage: &PackageStorageState,
+    ) {
+        let selected_bytes: u64 = self
+            .selected
+            .iter()
+            .filter_map(|package| storage.sizes.get(package).copied())
+            .sum();
+
+        ui.horizontal(|ui| {
+            ui.label(format!(
+                "{} selected · {}",
+                self.selected.len(),
+                format_bytes_mb(selected_bytes)
+            ));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let can_uninstall = !self.busy && serial.is_some() && !self.selected.is_empty();
+                let button = egui::Button::new(
+                    egui::RichText::new("Uninstall selected…").color(colors::OFF_WHITE),
+                )
+                .fill(colors::ERROR);
+                if ui.add_enabled(can_uninstall, button).clicked() {
+                    let mut packages: Vec<String> = self.selected.iter().cloned().collect();
+                    packages.sort();
+                    packages.retain(|package| !is_protected(package));
+                    if !packages.is_empty() {
+                        self.pending_system = packages
+                            .iter()
+                            .filter(|package| storage.is_system(package))
+                            .cloned()
+                            .collect();
+                        self.pending = Some(packages);
+                    }
+                }
+            });
+        });
+    }
+
+    fn show_status(&mut self, ui: &mut egui::Ui) {
+        if let Some(status) = &self.status {
+            ui.add_space(theme::ITEM_SPACING_Y);
+            let color = if status.error {
+                colors::ERROR
+            } else {
+                colors::LOG_INFO
+            };
+            ui.label(egui::RichText::new(&status.text).small().color(color));
+        }
+        if self.busy {
+            ui.horizontal(|ui| {
+                ui.spinner();
+                ui.label(
+                    egui::RichText::new("Running adb…")
+                        .small()
+                        .color(colors::FOOTER_TEXT),
+                );
+            });
+        }
+    }
+
+    fn show_removed(&mut self, ui: &mut egui::Ui, serial: Option<&str>) {
+        if self.removed.is_empty() {
+            return;
+        }
+
+        ui.add_space(theme::ITEM_SPACING_Y);
+        ui.separator();
+        ui.label(
+            egui::RichText::new("Removed this session")
+                .small()
+                .color(colors::FOOTER_TEXT),
+        );
+        let removed = self.removed.clone();
+        for package in removed {
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new(&package).monospace().small());
+                if ui
+                    .add_enabled(!self.busy && serial.is_some(), egui::Button::new("Restore"))
+                    .clicked()
+                {
+                    if let Some(serial) = serial {
+                        self.start_batch(serial.to_string(), PackageAction::Restore, vec![package]);
+                    }
+                }
+            });
+        }
+    }
+
+    fn show_hint(&self, ui: &mut egui::Ui) {
+        ui.add_space(theme::ITEM_SPACING_Y);
+        ui.label(
+            egui::RichText::new(
+                "Uninstall removes apps for the current user (pm uninstall --user 0). \
+                 System apps stay in the system image and can be restored here.",
+            )
+            .small()
+            .color(colors::FOOTER_TEXT),
+        );
+    }
+
+    fn show_confirmation(
+        &mut self,
+        ui: &mut egui::Ui,
+        serial: Option<&str>,
+        storage: &PackageStorageState,
+    ) {
+        let packages = self.pending.clone().unwrap_or_default();
+        let total_bytes: u64 = packages
+            .iter()
+            .filter_map(|package| storage.sizes.get(package).copied())
+            .sum();
+
+        ui.heading("Remove these apps?");
+        ui.label(format!(
+            "{} app(s) · {} will be removed for the current user.",
+            packages.len(),
+            format_bytes_mb(total_bytes)
+        ));
+        ui.add_space(theme::ITEM_SPACING_Y);
+
+        egui::ScrollArea::vertical()
+            .id_salt(egui::Id::new("cleanup_confirm"))
+            .max_height(260.0)
+            .show(ui, |ui| {
+                for package in &packages {
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new(package).monospace());
+                        if storage.is_system(package) {
+                            ui.label(
+                                egui::RichText::new("system")
+                                    .small()
+                                    .color(colors::LOG_WARNING),
+                            );
+                        }
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            ui.label(
+                                storage
+                                    .sizes
+                                    .get(package)
+                                    .map(|bytes| format_bytes_mb(*bytes))
+                                    .unwrap_or_else(|| "…".to_string()),
+                            );
+                        });
+                    });
+                }
+            });
+
+        ui.add_space(theme::ITEM_SPACING_Y);
+        ui.label(
+            egui::RichText::new(
+                "User-installed apps are deleted permanently. System apps can be restored \
+                 from the Removed list.",
+            )
+            .small()
+            .color(colors::LOG_WARNING),
+        );
+        ui.add_space(theme::ITEM_SPACING_Y);
+
+        ui.horizontal(|ui| {
+            // Destructive action on the left, Cancel on the right (where the
+            // "Uninstall selected…" button was). This prevents a double-click
+            // from selecting a package and confirming removal in one gesture.
+            let can_run = !self.busy && serial.is_some();
+            let button = egui::Button::new(
+                egui::RichText::new(format!("Uninstall {} app(s)", packages.len()))
+                    .color(colors::OFF_WHITE),
+            )
+            .fill(colors::ERROR);
+            if ui.add_enabled(can_run, button).clicked() {
+                if let Some(serial) = serial {
+                    self.start_batch(
+                        serial.to_string(),
+                        PackageAction::Uninstall,
+                        packages.clone(),
+                    );
+                }
+            }
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui.button("Cancel").clicked() {
+                    self.pending = None;
+                    self.pending_system.clear();
+                }
+            });
+        });
+    }
+
+    fn start_batch(&mut self, serial: String, action: PackageAction, packages: Vec<String>) {
+        let (tx, rx) = unbounded();
+        self.rx = Some(rx);
+        self.busy = true;
+        self.status = None;
+        self.pending = None;
+
+        thread::spawn(move || {
+            let mut succeeded = 0;
+            let mut failed = 0;
+            for package in packages {
+                let result = match action {
+                    PackageAction::Uninstall => adb_client::uninstall_package(&serial, &package),
+                    PackageAction::Restore => adb_client::restore_package(&serial, &package),
+                }
+                .map_err(|err| err.user_message());
+
+                if result.is_ok() {
+                    succeeded += 1;
+                } else {
+                    failed += 1;
+                }
+                if tx
+                    .send(CleanupEvent::Done {
+                        action,
+                        package,
+                        result,
+                    })
+                    .is_err()
+                {
+                    return;
+                }
+            }
+            let _ = tx.send(CleanupEvent::Finished {
+                action,
+                succeeded,
+                failed,
+            });
+        });
+    }
+
+    fn visible_rows(&self, storage: &PackageStorageState) -> Vec<Row> {
+        let needle = self.search.trim().to_lowercase();
+        let mut rows: Vec<Row> = storage
+            .packages
+            .iter()
+            .filter(|package| !self.hidden.contains(*package))
+            .filter(|package| self.show_system || !storage.is_system(package))
+            .filter(|package| needle.is_empty() || package.to_lowercase().contains(&needle))
+            .map(|package| Row {
+                package: package.clone(),
+                system: storage.is_system(package),
+                size: storage.sizes.get(package).copied(),
+                protected: is_protected(package),
+            })
+            .collect();
+
+        rows.sort_by(|left, right| match (left.size, right.size) {
+            (Some(left_size), Some(right_size)) => right_size
+                .cmp(&left_size)
+                .then_with(|| left.package.cmp(&right.package)),
+            (Some(_), None) => std::cmp::Ordering::Less,
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (None, None) => left.package.cmp(&right.package),
+        });
+        rows
+    }
+}
+
+fn is_protected(package: &str) -> bool {
+    PROTECTED_PACKAGES.contains(&package)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn core_packages_are_protected() {
+        assert!(is_protected("com.android.systemui"));
+        assert!(is_protected("com.miui.home"));
+        assert!(!is_protected("com.facebook.katana"));
+    }
+}

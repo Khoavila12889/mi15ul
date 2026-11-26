@@ -13,6 +13,15 @@ const REPLY_SEPARATOR_GAP: f32 = 4.0;
 /// Draws the insight body and returns the number of text lines in the reply area.
 pub fn insight_panel(ui: &mut egui::Ui, insight: &InsightController, auto_scroll: bool) -> usize {
     ui_elements::panel_body(ui, theme::colors::INSIGHT_BODY, |ui| {
+        if let Some(path) = ai_insight::history_path() {
+            ui.horizontal_wrapped(|ui| {
+                ui.small("Insight history (JSONL)")
+                    .on_hover_text(path.display().to_string());
+                if ui.small_button("Copy log path").clicked() {
+                    ui.ctx().copy_text(path.display().to_string());
+                }
+            });
+        }
         if insight.state.replies.is_empty() {
             match insight.state.status {
                 InsightStatus::RequestFailed => {
@@ -22,7 +31,10 @@ pub fn insight_panel(ui: &mut egui::Ui, insight: &InsightController, auto_scroll
                 }
                 InsightStatus::Idle | InsightStatus::RequestSent => {
                     if insight.config().is_configured() {
-                        ui.label("...");
+                        ui.label(format!(
+                            "Using {}. Waiting for new errors…",
+                            insight.config().engine.label()
+                        ));
                     } else {
                         ui.label("To see ai insights, configure the ai provider info in Settings");
                     }

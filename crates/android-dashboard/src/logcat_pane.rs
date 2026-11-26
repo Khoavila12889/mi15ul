@@ -76,7 +76,10 @@ impl LogcatPane {
     /// Skips the entry when `accept_errors_only` is set and the entry is not Error or Fatal.
     /// Returns true when the visible ring buffer changed.
     pub(crate) fn append_entry(&mut self, entry: &LogEntry) -> bool {
-        if self.accept_errors_only && !entry.is_error_level() {
+        if self.accept_errors_only
+            && (!entry.is_error_level()
+                || ai_insight::is_known_diagnostic_noise(entry.level, &entry.tag, &entry.message))
+        {
             return false;
         }
 
@@ -255,6 +258,17 @@ mod tests {
             tag: tag.to_string(),
             message: message.to_string(),
         }
+    }
+
+    #[test]
+    fn vendor_success_stays_in_raw_log_but_not_errors() {
+        let success = entry_with_tag('E', "MI-SF   ", "surfaceflinger setAffinity success");
+        let mut raw = LogcatPane::default();
+        let mut errors = LogcatPane { accept_errors_only: true, ..Default::default() };
+        assert!(raw.append_entry(&success));
+        assert!(!errors.append_entry(&success));
+        assert!(errors.append_entry(&entry_with_tag('E', "HwcComposer", "presentOrValidateDisplay 0 presentFence:-1")));
+        assert!(errors.append_entry(&entry_with_tag('F', "MI-SF", "surfaceflinger setAffinity success")));
     }
 
     #[test]

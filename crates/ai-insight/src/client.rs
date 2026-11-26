@@ -2,7 +2,8 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 
-use crate::config::InsightConfig;
+use crate::cli;
+use crate::config::{InsightConfig, InsightEngine};
 use crate::reduce::InsightSnapshot;
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(45);
@@ -21,9 +22,11 @@ pub enum InsightError {
     Transport(String),
     #[error("empty model reply")]
     EmptyReply,
+    #[error("{0}")]
+    Cli(String),
 }
 
-/// POSTs the snapshot to the configured Chat Completions endpoint and returns the assistant text.
+/// Sends the snapshot to the configured engine and returns the assistant text.
 ///
 /// Does not log the API key or request/response bodies at info.
 pub fn complete(
@@ -40,15 +43,48 @@ pub fn complete(
         .to_pretty_json()
         .map_err(|err| InsightError::Transport(err.to_string()))?;
 
-    let url = config.completions_url();
-    let system = format!(
+    match config.engine {
+        InsightEngine::Http => {
+            let text = complete_http(config, &system_prompt(), &snapshot_json)?;
+            ensure_reply(text)
+        }
+        InsightEngine::CodexCli => {
+            let prompt = format!("{}\n\nSnapshot:\n{snapshot_json}", system_prompt());
+            ensure_reply(cli::run_codex(config, &prompt)?)
+        }
+        InsightEngine::OpenCodeCli => {
+            let prompt = format!("{}\n\nSnapshot:\n{snapshot_json}", system_prompt());
+            ensure_reply(cli::run_opencode(config, &prompt)?)
+        }
+    }
+}
+
+fn ensure_reply(text: String) -> Result<String, InsightError> {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        Err(InsightError::EmptyReply)
+    } else {
+        Ok(trimmed.to_string())
+    }
+}
+
+fn system_prompt() -> String {
+    format!(
         "You are an Android runtime analyst inside a terminal HUD.\n\
 Comment only on the supplied snapshot. Do not invent stack frames.\n\
 Output:\n\
 1) Top issues: what / evidence count / likely cause\n\
 2) Next checks, max {MAX_NEXT_CHECKS} bullets\n\
 Max {MAX_REPLY_WORDS} words. No preamble. No HEALTHY/DEGRADING/FAILING verdict line."
-    );
+    )
+}
+
+fn complete_http(
+    config: &InsightConfig,
+    system: &str,
+    snapshot_json: &str,
+) -> Result<String, InsightError> {
+    let url = config.completions_url();
     let body = json!({
         "model": config.model,
         "temperature": TEMPERATURE,
@@ -103,9 +139,13 @@ mod tests {
 
     #[test]
     fn extract_assistant_text_from_openai_shape() {
-        let body = r#"{
-            "choices": [{ "message": { "content": "FAILING  disk full" } }]
-        }"#;
+        let body = r#"{ "choices": [{ "message": { "content": "FAILING  disk full" } }] }"#;
         assert_eq!(extract_assistant_text(body).unwrap(), "FAILING  disk full");
+    }
+
+    #[test]
+    fn ensure_reply_rejects_blank_output() {
+        assert!(ensure_reply("  \n".to_string()).is_err());
+        assert_eq!(ensure_reply(" ok \n".to_string()).unwrap(), "ok");
     }
 }

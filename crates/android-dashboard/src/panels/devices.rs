@@ -52,6 +52,7 @@ fn show_devices_body(ui: &mut egui::Ui, roster: &DeviceRoster) -> Option<String>
     if roster.devices.is_empty() {
         if !roster.list_job_in_flight {
             ui.label("No devices found.");
+            ui.label("Connect and unlock your phone, enable USB debugging, then click Check ADB. Charging alone does not confirm an ADB connection.");
         }
         return None;
     }
@@ -68,7 +69,8 @@ fn show_devices_body(ui: &mut egui::Ui, roster: &DeviceRoster) -> Option<String>
                     let device = &roster.devices[index];
                     let is_selected =
                         roster.selected_serial.as_deref() == Some(device.serial.as_str());
-                    let label = format!("{}\n{}", device.model, device.display_details());
+                    let model = if device.model.is_empty() { &device.serial } else { &device.model };
+                    let label = format!("{}\n{}\nADB connected", model, device.display_details());
 
                     if device.state == DeviceState::Device {
                         let color = if is_selected {
@@ -89,10 +91,15 @@ fn show_devices_body(ui: &mut egui::Ui, roster: &DeviceRoster) -> Option<String>
                         ui.add_enabled_ui(false, |ui| {
                             ui.label(format!(
                                 "{}\n{} ({})",
-                                device.model,
+                                model,
                                 device.serial,
                                 device_state_label(&device.state)
                             ));
+                        });
+                        ui.label(match &device.state {
+                            DeviceState::Offline => "ADB sees this connection but cannot communicate. Reconnect USB or restart the phone. For Wi-Fi, check the current debugging IP and port.",
+                            DeviceState::Unauthorized => "Unlock the phone and accept the RSA debugging prompt. USB debugging being enabled is not enough.",
+                            _ => "Connection is not ready. Check the device and try Check ADB again.",
                         });
                     }
                 }

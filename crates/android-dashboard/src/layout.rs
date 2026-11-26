@@ -272,7 +272,15 @@ impl Behavior<PanelId> for AppTilesBehavior<'_> {
                     ui,
                     pane.icon(),
                     pane.title(),
-                    |_| {},
+                    |ui| {
+                        if ui_elements::header_action(
+                            ui,
+                            "Configure…",
+                            "Set the AI provider, model, and API key",
+                        ) {
+                            self.app.settings.open_from(self.app.insight.config());
+                        }
+                    },
                     |ui, auto_scroll| {
                         if !device_selected {
                             ui_elements::panel_loading(ui);
@@ -313,13 +321,34 @@ impl Behavior<PanelId> for AppTilesBehavior<'_> {
                 self.app.logcat_errors.auto_update_feed = auto_scroll;
             }
             PanelId::SystemStats => {
-                ui_elements::panel(ui, pane.icon(), pane.title(), |ui| {
-                    if !device_selected {
-                        ui_elements::panel_loading(ui);
-                    } else {
-                        panels::storage::storage_usage_panel(ui, &self.app.metrics);
-                    }
-                });
+                ui_elements::panel_with_header_actions(
+                    ui,
+                    pane.icon(),
+                    pane.title(),
+                    |ui| {
+                        if ui_elements::header_action(
+                            ui,
+                            "Backup / Transfer…",
+                            "Browse phone and PC folders; copy in either direction",
+                        ) {
+                            self.app.backup.open = true;
+                        }
+                        if ui_elements::header_action(
+                            ui,
+                            "Clean up…",
+                            "Uninstall unused or junk apps",
+                        ) {
+                            self.app.cleanup.open();
+                        }
+                    },
+                    |ui| {
+                        if !device_selected {
+                            ui_elements::panel_loading(ui);
+                        } else {
+                            panels::storage::storage_usage_panel(ui, &self.app.metrics);
+                        }
+                    },
+                );
             }
             PanelId::Network => {
                 ui_elements::panel(ui, pane.icon(), pane.title(), |ui| {

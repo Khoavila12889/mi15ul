@@ -251,6 +251,10 @@ impl DeviceSession {
                     metrics.app_storage.error = None;
                     updated = true;
                 }
+                AppStorageUpdate::SystemPackages(packages) => {
+                    metrics.app_storage.set_system_packages(packages);
+                    updated = true;
+                }
                 AppStorageUpdate::PackageStorage(storage) => {
                     metrics
                         .app_storage

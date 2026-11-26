@@ -632,7 +632,7 @@ pub fn devices_footer(
                 egui::vec2(ui.available_width(), ui.available_height()),
                 egui::Layout::right_to_left(egui::Align::Center),
                 |ui| {
-                    refresh = footer_action(ui, "Refresh", "Re-run adb devices");
+                    refresh = footer_action(ui, "Check ADB", "Refresh connections and verify that online devices respond to an ADB shell command");
                 },
             );
         });
@@ -688,6 +688,21 @@ fn footer_label_width(ui: &Ui, text: &str) -> f32 {
         .x
 }
 
+/// Small text action for a panel header row. Returns `true` when clicked.
+pub fn header_action(ui: &mut Ui, label: &str, hover: &str) -> bool {
+    ui.add(
+        egui::Label::new(
+            egui::RichText::new(label)
+                .small()
+                .color(colors::FOOTER_TEXT),
+        )
+        .sense(egui::Sense::click()),
+    )
+    .on_hover_cursor(egui::CursorIcon::PointingHand)
+    .on_hover_text(hover)
+    .clicked()
+}
+
 fn footer_action(ui: &mut Ui, label: &str, hover: &str) -> bool {
     ui.add(
         egui::Label::new(
@@ -706,4 +721,87 @@ fn footer_toggle(ui: &mut Ui, label: &str, hover: &str, flag: &mut bool) {
     if footer_action(ui, label, hover) {
         *flag = !*flag;
     }
+}
+
+/// Elevated dark-blue card container for tool windows.
+pub fn tool_card<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
+    egui::Frame::default()
+        .fill(colors::SURFACE_CARD)
+        .stroke(egui::Stroke::new(1.0, colors::BORDER_SUBTLE))
+        .corner_radius(egui::CornerRadius::same(8))
+        .inner_margin(egui::Margin::same(10))
+        .show(ui, add)
+        .inner
+}
+
+/// Darker inset card container for drop zones, summaries, and nested blocks.
+pub fn tool_subcard<R>(ui: &mut Ui, border: Option<egui::Color32>, add: impl FnOnce(&mut Ui) -> R) -> R {
+    egui::Frame::default()
+        .fill(colors::SURFACE_SUBCARD)
+        .stroke(egui::Stroke::new(1.0, border.unwrap_or(colors::BORDER_SUBTLE)))
+        .corner_radius(egui::CornerRadius::same(6))
+        .inner_margin(egui::Margin::same(8))
+        .show(ui, add)
+        .inner
+}
+
+/// Tinted pill badge for device status, ABI, queue items, or warnings.
+pub fn status_pill(ui: &mut Ui, text: &str, color: egui::Color32) {
+    let fill = egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 36);
+    let stroke = egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 120);
+    egui::Frame::default()
+        .fill(fill)
+        .stroke(egui::Stroke::new(1.0, stroke))
+        .corner_radius(egui::CornerRadius::same(12))
+        .inner_margin(egui::Margin::symmetric(8, 2))
+        .show(ui, |ui| {
+            ui.label(egui::RichText::new(text).small().color(color).strong());
+        });
+}
+
+/// Section title + muted subtitle inside tool windows.
+pub fn section_header(ui: &mut Ui, title: &str, subtitle: &str) {
+    ui.label(egui::RichText::new(title).color(colors::OFF_WHITE).strong());
+    if !subtitle.is_empty() {
+        ui.label(egui::RichText::new(subtitle).small().color(colors::TEXT_MUTED));
+    }
+}
+
+/// Primary semantic CTA button (blue, green, amber, or red).
+pub fn accent_button(ui: &mut Ui, label: &str, fill: egui::Color32) -> egui::Response {
+    ui.add(
+        egui::Button::new(egui::RichText::new(label).color(egui::Color32::WHITE).strong())
+            .fill(fill)
+            .stroke(egui::Stroke::new(1.0, fill))
+            .corner_radius(egui::CornerRadius::same(6)),
+    )
+}
+
+/// Compact top-toolbar launcher button with optional active/accent tint.
+pub fn toolbar_button(
+    ui: &mut Ui,
+    label: &str,
+    active: bool,
+    accent: Option<egui::Color32>,
+) -> egui::Response {
+    let base = accent.unwrap_or(colors::ACCENT_BLUE);
+    let (fill, stroke, text_color) = if active || accent.is_some() {
+        (
+            egui::Color32::from_rgba_unmultiplied(base.r(), base.g(), base.b(), if active { 72 } else { 42 }),
+            egui::Stroke::new(1.0, egui::Color32::from_rgba_unmultiplied(base.r(), base.g(), base.b(), 160)),
+            colors::OFF_WHITE,
+        )
+    } else {
+        (
+            colors::BG_WIDGET,
+            egui::Stroke::new(1.0, colors::BORDER_SUBTLE),
+            colors::OFF_WHITE,
+        )
+    };
+    ui.add(
+        egui::Button::new(egui::RichText::new(label).color(text_color).strong())
+            .fill(fill)
+            .stroke(stroke)
+            .corner_radius(egui::CornerRadius::same(6)),
+    )
 }

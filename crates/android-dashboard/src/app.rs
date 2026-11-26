@@ -4,6 +4,8 @@ use ai_insight::InsightConfig;
 use eframe::egui;
 
 use crate::metrics::MetricStore;
+use crate::panels::apps::AppCleanup;
+use crate::panels::settings::SettingsDialog;
 use crate::roster::{DeviceRoster, RosterEvent};
 use crate::session::{DeviceSession, SessionStartErrors};
 
@@ -20,6 +22,12 @@ pub struct App {
     pub logcat_errors: LogcatPane,
     pub metrics: MetricStore,
     pub insight: InsightController,
+    pub cleanup: AppCleanup,
+    pub backup: crate::panels::backup::BackupDialog,
+    pub flash: crate::panels::flash::FlashDialog,
+    pub apk: crate::panels::apk_installer::ApkInstallerDialog,
+    pub hyperos: crate::panels::hyperos::HyperOsDialog,
+    pub settings: SettingsDialog,
 }
 
 impl App {
@@ -34,6 +42,12 @@ impl App {
             },
             metrics: MetricStore::default(),
             insight: InsightController::new(insight),
+            cleanup: AppCleanup::default(),
+            backup: crate::panels::backup::BackupDialog::default(),
+            flash: crate::panels::flash::FlashDialog::default(),
+            apk: crate::panels::apk_installer::ApkInstallerDialog::default(),
+            hyperos: crate::panels::hyperos::HyperOsDialog::default(),
+            settings: SettingsDialog::default(),
         }
     }
 
@@ -48,6 +62,7 @@ impl App {
 
         self.session.stop();
         self.clear_view_state();
+        self.cleanup.reset();
         self.roster.selected_serial = Some(serial.clone());
         let errors = self.session.start(&serial);
         self.apply_start_errors(errors);
@@ -60,6 +75,7 @@ impl App {
 
         self.session.stop();
         self.clear_view_state();
+        self.cleanup.reset();
         self.roster.selected_serial = None;
     }
 
@@ -102,6 +118,35 @@ impl App {
     }
 
     pub fn tick(&mut self, ctx: &egui::Context) {
+        self.backup
+            .bind_device(self.roster.selected_serial.as_deref());
+        if self.backup.tick() {
+            ctx.request_repaint();
+        }
+        self.flash
+            .bind_adb_device(self.roster.selected_serial.as_deref());
+        if self.flash.tick() {
+            ctx.request_repaint();
+        }
+        if self.flash.is_busy() {
+            ctx.request_repaint_after(Duration::from_millis(120));
+        }
+        self.apk
+            .bind_device(self.roster.selected_serial.as_deref());
+        if self.apk.tick() {
+            ctx.request_repaint();
+        }
+        if self.apk.is_busy() {
+            ctx.request_repaint_after(Duration::from_millis(120));
+        }
+        self.hyperos
+            .bind_device(self.roster.selected_serial.as_deref());
+        if self.hyperos.tick() {
+            ctx.request_repaint();
+        }
+        if self.hyperos.is_busy() {
+            ctx.request_repaint_after(Duration::from_millis(120));
+        }
         let mut needs_repaint = false;
         if let Some(event) = self.roster.drain_list() {
             self.apply_roster_event(event);
@@ -121,6 +166,9 @@ impl App {
             needs_repaint = true;
         }
         if self.insight.drain(self.roster.selected_serial.as_deref()) {
+            needs_repaint = true;
+        }
+        if self.cleanup.tick() {
             needs_repaint = true;
         }
         self.maybe_request_insight();

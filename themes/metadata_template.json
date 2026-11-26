@@ -1,0 +1,174 @@
+{
+  "theme": {
+    "localId": "TEMPLATE_UUID",
+    "onlineId": null,
+    "assemblyId": null,
+    "productId": null,
+    "hash": "TEMPLATE_HASH",
+    "platform": 17,
+    "size": 0,
+    "updatedTime": 0,
+    "version": "1",
+    "authors": {
+      "zh_CN": "Truong Nguyen",
+      "fallback": "Truong Nguyen"
+    },
+    "designers": {
+      "zh_CN": "Truong Nguyen",
+      "fallback": "Truong Nguyen"
+    },
+    "titles": {
+      "zh_CN": "Xiaomi Theme VN",
+      "fallback": "Xiaomi Theme VN"
+    },
+    "descriptions": {
+      "zh_CN": "",
+      "fallback": ""
+    },
+    "builtInThumbnails": {
+      "fallback": [
+        "preview_cover_0.jpg",
+        "preview_launcher_0.jpg",
+        "preview_lockscreen_0.jpg"
+      ]
+    },
+    "builtInPreviews": {
+      "fallback": [
+        "preview_cover_0.jpg",
+        "preview_launcher_0.jpg",
+        "preview_lockscreen_0.jpg"
+      ]
+    },
+    "thumbnails": [],
+    "previews": [],
+    "parentResources": [],
+    "subResources": [],
+    "extraMeta": {},
+    "metaPath": null,
+    "contentPath": "TEMPLATE_PATH",
+    "rightsPath": null,
+    "screenRatio": null,
+    "supportHomeSearchBar": false,
+    "packageVersion": null,
+    "packageName": null,
+    "officialIcons": false,
+    "iconsCount": null,
+    "fontWeight": null,
+    "price": -1,
+    "isBackupVersion": false,
+    "themeType": 0,
+    "miuiAdapterVersion": null
+  },
+  "component": {
+    "localId": "TEMPLATE_UUID",
+    "onlineId": null,
+    "assemblyId": null,
+    "productId": null,
+    "hash": "TEMPLATE_HASH",
+    "platform": 17,
+    "size": 0,
+    "updatedTime": 0,
+    "version": "1",
+    "authors": {
+      "fallback": "Truong Nguyen",
+      "zh_CN": "Truong Nguyen"
+    },
+    "designers": {
+      "fallback": "Truong Nguyen",
+      "zh_CN": "Truong Nguyen"
+    },
+    "titles": {
+      "fallback": "Xiaomi Theme VN",
+      "zh_CN": "Xiaomi Theme VN"
+    },
+    "descriptions": {
+      "fallback": "",
+      "zh_CN": ""
+    },
+    "builtInThumbnails": {
+      "fallback": []
+    },
+    "builtInPreviews": {
+      "fallback": []
+    },
+    "thumbnails": [],
+    "previews": [],
+    "parentResources": [],
+    "subResources": [],
+    "extraMeta": {},
+    "metaPath": null,
+    "contentPath": null,
+    "rightsPath": null,
+    "screenRatio": null,
+    "supportHomeSearchBar": false,
+    "packageVersion": null,
+    "packageName": null,
+    "officialIcons": false,
+    "wallpaperStyle": 0,
+    "isSingleResource": false,
+    "iconsCount": null,
+    "fontWeight": null,
+    "price": -1,
+    "isBackUpVersion": false,
+    "themeType": 0,
+    "miuiAdapterVersion": "4.0"
+  },
+  "launcher": {
+    "localId": "TEMPLATE_UUID",
+    "onlineId": null,
+    "assemblyId": null,
+    "productId": null,
+    "hash": "TEMPLATE_HASH",
+    "platform": 17,
+    "size": 0,
+    "updatedTime": 0,
+    "version": "1",
+    "authors": {
+      "fallback": "Truong Nguyen",
+      "zh_CN": "Truong Nguyen"
+    },
+    "designers": {
+      "fallback": "Truong Nguyen",
+      "zh_CN": "Truong Nguyen"
+    },
+    "titles": {
+      "fallback": "Xiaomi Theme VN",
+      "zh_CN": "Xiaomi Theme VN"
+    },
+    "descriptions": {
+      "fallback": "",
+      "zh_CN": ""
+    },
+    "builtInThumbnails": {
+      "fallback": [
+        "preview_launcher_0.jpg"
+      ]
+    },
+    "builtInPreviews": {
+      "fallback": [
+        "preview_launcher_0.jpg"
+      ]
+    },
+    "thumbnails": [],
+    "previews": [],
+    "parentResources": [],
+    "subResources": [],
+    "extraMeta": {},
+    "metaPath": null,
+    "contentPath": null,
+    "rightsPath": null,
+    "screenRatio": null,
+    "supportHomeSearchBar": false,
+    "packageVersion": null,
+    "packageName": null,
+    "officialIcons": false,
+    "wallpaperStyle": 0,
+    "isSingleResource": false,
+    "iconsCount": null,
+    "fontWeight": null,
+    "price": -1,
+    "isBackUpVersion": false,
+    "themeType": 0,
+    "miuiAdapterVersion": "4.0"
+  }
+}

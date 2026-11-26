@@ -1,7 +1,9 @@
 //! ADB client library for Android device communication.
 
-mod adb;
+pub mod adb;
 mod app_storage;
+pub mod apk;
+mod apps;
 mod background;
 mod device;
 mod device_list;
@@ -13,9 +15,13 @@ mod ram;
 mod stats;
 mod storage_breakdown;
 mod storage_gauge;
+pub mod transfer;
+pub mod flash;
+pub mod hyperos;
 
 pub use adb::Adb;
 pub use app_storage::{AppStoragePoller, AppStorageUpdate, PackageStorage};
+pub use apps::{restore_package, uninstall_package};
 pub use device::{DeviceInfo, DeviceState};
 pub use device_list::{DeviceListJob, DeviceListUpdate};
 pub use error::AdbError;

@@ -75,6 +75,7 @@ impl DeviceRoster {
 
         Some(match update {
             DeviceListUpdate::Devices { devices, .. } => {
+                self.adb_error = None;
                 self.list_error = None;
                 self.apply_devices(devices)
             }
@@ -199,6 +200,7 @@ mod tests {
     #[test]
     fn matching_devices_applies_and_clears_in_flight() {
         let mut roster = roster(None);
+        roster.adb_error = Some("ADB was unavailable at startup".into());
         let tx = begin_list_job(&mut roster);
         let generation = roster.list_generation;
         tx.send(DeviceListUpdate::Devices {
@@ -211,6 +213,7 @@ mod tests {
         assert_eq!(event, Some(RosterEvent::AutoSelect("a".to_string())));
         assert!(!roster.list_job_in_flight);
         assert_eq!(roster.devices.len(), 1);
+        assert!(roster.adb_error.is_none());
         assert!(roster.devices_refreshed_at.is_some());
         assert!(roster.list_rx.is_none());
     }

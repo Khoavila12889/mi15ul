@@ -6,7 +6,7 @@ use crate::client::{InsightError, complete};
 use crate::config::InsightConfig;
 use crate::reduce::InsightSnapshot;
 
-/// Result of one background Chat Completions call.
+/// Result of one background insight request.
 #[derive(Debug, Clone)]
 pub enum InsightUpdate {
     Started {
@@ -53,6 +53,12 @@ fn run_insight(
     generation: u64,
     serial: String,
 ) {
+    let started = std::time::Instant::now();
+    crate::history::record(serde_json::json!({
+        "event": "request", "generation": generation,
+        "device_label": snapshot.device_label, "engine": config.engine,
+        "model": config.model, "snapshot": snapshot,
+    }));
     let _ = tx.send(InsightUpdate::Started {
         generation,
         serial: serial.clone(),
@@ -60,6 +66,12 @@ fn run_insight(
 
     match complete(&config, &snapshot, generation) {
         Ok(text) => {
+            crate::history::record(serde_json::json!({
+                "event": "reply", "generation": generation,
+                "device_label": snapshot.device_label, "engine": config.engine,
+                "model": config.model, "elapsed_ms": started.elapsed().as_millis() as u64,
+                "response_bytes": text.len(), "text": text,
+            }));
             let _ = tx.send(InsightUpdate::Reply {
                 generation,
                 serial,
@@ -67,6 +79,12 @@ fn run_insight(
             });
         }
         Err(err) => {
+            crate::history::record(serde_json::json!({
+                "event": "error", "generation": generation,
+                "device_label": snapshot.device_label, "engine": config.engine,
+                "model": config.model, "elapsed_ms": started.elapsed().as_millis() as u64,
+                "message": user_facing_error(&err),
+            }));
             let _ = tx.send(InsightUpdate::Error {
                 generation,
                 serial,
@@ -94,5 +112,6 @@ fn user_facing_error(err: &InsightError) -> String {
             "The app could not reach the ai provider. Check your configuration in the settings panel"
                 .to_string()
         }
+        InsightError::Cli(message) => format!("The ai provider failed: {message}"),
     }
 }

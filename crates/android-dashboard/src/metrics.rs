@@ -1,10 +1,12 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use adb_client::{MemoryStats, NetworkStats, ProtocolStats, StorageBreakdown, StorageOverview};
 
 #[derive(Default)]
 pub struct PackageStorageState {
     pub packages: Vec<String>,
+    /// Packages that are part of the system image.
+    pub system: HashSet<String>,
     pub sizes: HashMap<String, u64>,
     pub scanning: bool,
     pub error: Option<String>,
@@ -22,6 +24,14 @@ impl PackageStorageState {
         self.sizes
             .retain(|package, _| self.packages.iter().any(|pkg| pkg == package));
         self.scanning = true;
+    }
+
+    pub fn set_system_packages(&mut self, packages: Vec<String>) {
+        self.system = packages.into_iter().collect();
+    }
+
+    pub fn is_system(&self, package: &str) -> bool {
+        self.system.contains(package)
     }
 
     pub fn set_size(&mut self, package: &str, bytes: u64) {

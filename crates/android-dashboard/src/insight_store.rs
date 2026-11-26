@@ -2,14 +2,17 @@ use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
-use ai_insight::InsightConfig;
+use ai_insight::{InsightConfig, InsightEngine};
 use serde::{Deserialize, Serialize};
 
-const INSIGHT_VERSION: u32 = 1;
+/// Version 2 adds `engine`. Version 1 files (HTTP only) still load.
+const INSIGHT_VERSION: u32 = 2;
 
 #[derive(Serialize, Deserialize)]
 struct InsightFile {
     version: u32,
+    #[serde(default)]
+    engine: InsightEngine,
     base_url: String,
     model: String,
     api_key: String,
@@ -19,6 +22,7 @@ impl InsightFile {
     fn from_config(config: &InsightConfig) -> Self {
         Self {
             version: INSIGHT_VERSION,
+            engine: config.engine,
             base_url: config.base_url.clone(),
             model: config.model.clone(),
             api_key: config.api_key.clone(),
@@ -26,11 +30,49 @@ impl InsightFile {
     }
 
     fn into_config(self) -> Option<InsightConfig> {
-        (self.version == INSIGHT_VERSION).then_some(InsightConfig {
+        matches!(self.version, 1 | 2).then_some(InsightConfig {
+            engine: self.engine,
             base_url: self.base_url,
             model: self.model,
             api_key: self.api_key,
         })
+    }
+}
+
+/// Credentials already present on this machine for the user's Codex/OpenCode
+/// installs. Used by the **Detect local logins** button in the settings dialog.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub(crate) struct LocalCredentials {
+    /// Codex is signed in with a ChatGPT account (no API key to copy).
+    pub codex_chatgpt: bool,
+    /// A real `OPENAI_API_KEY` stored by Codex, when present.
+    pub codex_api_key: Option<String>,
+    /// OpenCode Console/Zen API key from `opencode auth login`.
+    pub opencode_api_key: Option<String>,
+}
+
+impl LocalCredentials {
+    pub fn any_found(&self) -> bool {
+        self.codex_chatgpt || self.codex_api_key.is_some() || self.opencode_api_key.is_some()
+    }
+
+    /// Short human-readable summary for the dialog status line.
+    pub fn summary(&self) -> String {
+        let mut found = Vec::new();
+        if self.codex_chatgpt {
+            found.push("Codex (ChatGPT login)");
+        }
+        if self.codex_api_key.is_some() {
+            found.push("Codex API key");
+        }
+        if self.opencode_api_key.is_some() {
+            found.push("OpenCode API key");
+        }
+        if found.is_empty() {
+            "No Codex or OpenCode login found on this machine.".to_string()
+        } else {
+            format!("Found: {}.", found.join(", "))
+        }
     }
 }
 
@@ -102,6 +144,97 @@ pub(crate) fn save(config: &InsightConfig) -> bool {
     true
 }
 
+/// Reads the local Codex and OpenCode auth files without modifying them.
+pub(crate) fn detect_local_credentials() -> LocalCredentials {
+    let mut found = LocalCredentials::default();
+
+    if let Some(path) = codex_auth_path() {
+        if let Ok(text) = fs::read_to_string(path) {
+            let (chatgpt, key) = parse_codex_auth(&text);
+            found.codex_chatgpt = chatgpt;
+            found.codex_api_key = key;
+        }
+    }
+
+    for path in opencode_auth_paths() {
+        if let Ok(text) = fs::read_to_string(&path) {
+            if let Some(key) = parse_opencode_auth(&text) {
+                found.opencode_api_key = Some(key);
+                break;
+            }
+        }
+    }
+
+    found
+}
+
+fn codex_auth_path() -> Option<PathBuf> {
+    let home = std::env::var_os("CODEX_HOME")
+        .map(PathBuf::from)
+        .or_else(|| dirs::home_dir().map(|home| home.join(".codex")))?;
+    Some(home.join("auth.json"))
+}
+
+fn opencode_auth_paths() -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+    if let Some(data_home) = std::env::var_os("XDG_DATA_HOME") {
+        paths.push(PathBuf::from(data_home).join("opencode").join("auth.json"));
+    }
+    if let Some(home) = dirs::home_dir() {
+        paths.push(
+            home.join(".local")
+                .join("share")
+                .join("opencode")
+                .join("auth.json"),
+        );
+    }
+    if let Some(local) = dirs::data_local_dir() {
+        paths.push(local.join("opencode").join("auth.json"));
+    }
+    if let Some(roaming) = dirs::data_dir() {
+        paths.push(roaming.join("opencode").join("auth.json"));
+    }
+    paths
+}
+
+/// Returns `(chatgpt_login, api_key)` from a Codex `auth.json`.
+fn parse_codex_auth(json: &str) -> (bool, Option<String>) {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(json) else {
+        return (false, None);
+    };
+
+    let api_key = value
+        .get("OPENAI_API_KEY")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|key| !key.is_empty())
+        .map(str::to_string);
+
+    let chatgpt = value
+        .get("auth_mode")
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|mode| mode.eq_ignore_ascii_case("chatgpt"))
+        || value
+            .get("tokens")
+            .and_then(|tokens| tokens.get("access_token"))
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|token| !token.trim().is_empty());
+
+    (chatgpt, api_key)
+}
+
+/// Returns the `opencode` provider key from an OpenCode `auth.json`.
+fn parse_opencode_auth(json: &str) -> Option<String> {
+    let value: serde_json::Value = serde_json::from_str(json).ok()?;
+    value
+        .get("opencode")?
+        .get("key")?
+        .as_str()
+        .map(str::trim)
+        .filter(|key| !key.is_empty())
+        .map(str::to_string)
+}
+
 fn encode(config: &InsightConfig) -> Result<String, serde_json::Error> {
     serde_json::to_string_pretty(&InsightFile::from_config(config))
 }
@@ -154,6 +287,7 @@ mod tests {
             api_key: "sk-test".into(),
             base_url: "https://api.example.com".into(),
             model: "example-model".into(),
+            engine: InsightEngine::Http,
         }
     }
 
@@ -162,9 +296,31 @@ mod tests {
         let original = sample();
         let json = encode(&original).expect("encode");
         let restored = decode(&json).expect("decode");
-        assert_eq!(restored.api_key, original.api_key);
-        assert_eq!(restored.base_url, original.base_url);
-        assert_eq!(restored.model, original.model);
+        assert_eq!(restored, original);
+    }
+
+    #[test]
+    fn encode_decode_round_trips_cli_engine() {
+        let original = InsightConfig {
+            engine: InsightEngine::CodexCli,
+            ..sample()
+        };
+        let json = encode(&original).expect("encode");
+        let restored = decode(&json).expect("decode");
+        assert_eq!(restored.engine, InsightEngine::CodexCli);
+    }
+
+    #[test]
+    fn decode_accepts_version_one_as_http() {
+        let json = r#"{
+            "version": 1,
+            "base_url": "https://api.example.com",
+            "model": "example-model",
+            "api_key": "sk-test"
+        }"#;
+        let config = decode(json).expect("v1 config");
+        assert_eq!(config.engine, InsightEngine::Http);
+        assert_eq!(config.api_key, "sk-test");
     }
 
     #[test]
@@ -176,7 +332,7 @@ mod tests {
     fn decode_rejects_other_version() {
         let mut value: serde_json::Value =
             serde_json::from_str(&encode(&sample()).expect("encode")).expect("json");
-        value["version"] = serde_json::json!(2);
+        value["version"] = serde_json::json!(3);
         assert!(decode(&value.to_string()).is_none());
     }
 
@@ -194,8 +350,39 @@ mod tests {
         let original = sample();
         save_to_path(&temp.0, &original).expect("save");
         let loaded = load_from_path(&temp.0);
-        assert_eq!(loaded.api_key, original.api_key);
-        assert_eq!(loaded.base_url, original.base_url);
-        assert_eq!(loaded.model, original.model);
+        assert_eq!(loaded, original);
+    }
+
+    #[test]
+    fn parses_codex_chatgpt_auth() {
+        let json = r#"{
+            "auth_mode": "chatgpt",
+            "OPENAI_API_KEY": null,
+            "tokens": { "access_token": "eyJhbGci" }
+        }"#;
+        assert_eq!(parse_codex_auth(json), (true, None));
+    }
+
+    #[test]
+    fn parses_codex_api_key_auth() {
+        let json = r#"{ "auth_mode": "apikey", "OPENAI_API_KEY": " sk-proj-123 " }"#;
+        assert_eq!(
+            parse_codex_auth(json),
+            (false, Some("sk-proj-123".to_string()))
+        );
+    }
+
+    #[test]
+    fn parses_opencode_key() {
+        let json = r#"{ "opencode": { "type": "api", "key": "sk-zen" } }"#;
+        assert_eq!(parse_opencode_auth(json), Some("sk-zen".to_string()));
+        assert_eq!(parse_opencode_auth("{}"), None);
+    }
+
+    #[test]
+    fn detects_credentials_from_disk() {
+        // Smoke test only: it must not panic when nothing is logged in.
+        let found = detect_local_credentials();
+        let _ = found.summary();
     }
 }
