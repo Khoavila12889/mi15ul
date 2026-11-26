@@ -8,6 +8,7 @@ use crate::panels::apps::AppCleanup;
 use crate::panels::settings::SettingsDialog;
 use crate::roster::{DeviceRoster, RosterEvent};
 use crate::session::{DeviceSession, SessionStartErrors};
+use crate::tabs::MainTab;
 
 pub use crate::insight::{InsightController, InsightStatus};
 pub use crate::logcat_pane::{CachedLogLine, ErrorsTab, LogcatPane, LogcatTagFilter};
@@ -28,6 +29,10 @@ pub struct App {
     pub apk: crate::panels::apk_installer::ApkInstallerDialog,
     pub hyperos: crate::panels::hyperos::HyperOsDialog,
     pub settings: SettingsDialog,
+    /// Tab chính mà một panel muốn chuyển tới (ví dụ nút "Dọn ứng dụng…"
+    /// ở Chi tiết bộ nhớ chuyển sang tab Ứng dụng). `TerminalApp` đọc và
+    /// xóa mỗi khung hình.
+    pub requested_tab: Option<MainTab>,
 }
 
 impl App {
@@ -48,6 +53,7 @@ impl App {
             apk: crate::panels::apk_installer::ApkInstallerDialog::default(),
             hyperos: crate::panels::hyperos::HyperOsDialog::default(),
             settings: SettingsDialog::default(),
+            requested_tab: None,
         }
     }
 

@@ -799,31 +799,3 @@ pub fn accent_button(ui: &mut Ui, label: &str, fill: egui::Color32) -> egui::Res
     )
 }
 
-/// Compact top-toolbar launcher button with optional active/accent tint.
-pub fn toolbar_button(
-    ui: &mut Ui,
-    label: &str,
-    active: bool,
-    accent: Option<egui::Color32>,
-) -> egui::Response {
-    let base = accent.unwrap_or(colors::ACCENT_BLUE);
-    let (fill, stroke, text_color) = if active || accent.is_some() {
-        (
-            egui::Color32::from_rgba_unmultiplied(base.r(), base.g(), base.b(), if active { 72 } else { 42 }),
-            egui::Stroke::new(1.0, egui::Color32::from_rgba_unmultiplied(base.r(), base.g(), base.b(), 160)),
-            colors::OFF_WHITE,
-        )
-    } else {
-        (
-            colors::BG_WIDGET,
-            egui::Stroke::new(1.0, colors::BORDER_SUBTLE),
-            colors::OFF_WHITE,
-        )
-    };
-    ui.add(
-        egui::Button::new(egui::RichText::new(label).color(text_color).strong())
-            .fill(fill)
-            .stroke(stroke)
-            .corner_radius(egui::CornerRadius::same(6)),
-    )
-}

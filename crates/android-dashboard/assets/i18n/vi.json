@@ -491,5 +491,14 @@
   "adb_err.unauthorized": "Thiết bị chưa cấp quyền gỡ lỗi — hãy bấm Cho phép trên hộp thoại USB Debugging ở điện thoại",
   "adb_err.permission": "Không đủ quyền truy cập",
   "adb_err.not_found_dev": "Không tìm thấy thiết bị",
-  "adb_err.cmd_failed": "Lệnh adb thực thi thất bại"
+  "adb_err.cmd_failed": "Lệnh adb thực thi thất bại",
+
+  "app.refresh_devices": "Làm mới thiết bị",
+
+  "tab.overview": "Tổng quan",
+  "tab.logs": "Log & Lỗi",
+  "tab.apps": "Ứng dụng",
+  "tab.hyperos": "HyperOS",
+  "tab.flash": "Flash & Khóa",
+  "tab.tools": "Công cụ"
 }

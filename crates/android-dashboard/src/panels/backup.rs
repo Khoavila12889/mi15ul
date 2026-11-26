@@ -1,4 +1,5 @@
 use crate::i18n;
+use crate::ui_elements;
 use adb_client::transfer::{
     self, RemoteFolder, TransferDirection, TransferEvent, TransferJob, TransferRequest,
 };
@@ -14,7 +15,6 @@ struct Listing {
 }
 
 pub struct BackupDialog {
-    pub open: bool,
     serial: Option<String>,
     remote: String,
     local: String,
@@ -35,7 +35,6 @@ pub struct BackupDialog {
 impl Default for BackupDialog {
     fn default() -> Self {
         Self {
-            open: false,
             serial: None,
             remote: "/sdcard".into(),
             local: dirs::home_dir()
@@ -69,9 +68,7 @@ impl BackupDialog {
             self.folders.clear();
             self.listing = None;
             self.remote = "/sdcard".into();
-            if self.open {
-                self.refresh_remote();
-            }
+            self.refresh_remote();
         }
     }
 
@@ -276,18 +273,12 @@ impl BackupDialog {
         self.request = Some(request);
     }
 
-    pub fn show(&mut self, ctx: &egui::Context) {
-        if !self.open {
-            return;
-        }
-        let mut open = self.open;
-        egui::Window::new(i18n::t("backup.title"))
-            .open(&mut open)
-            .default_size([850.0, 620.0])
-            .min_width(440.0)
-            .resizable(true)
-            .vscroll(true)
-            .show(ctx, |ui| {
+    /// Renders the backup / transfer UI inside the Tools tab.
+    pub fn show_in(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        ui_elements::tool_card(ui, |ui| {
+            ui_elements::section_header(ui, i18n::t("backup.title"), "");
+            ui.add_space(4.0);
+            {
                 let dev = self
                     .serial
                     .as_deref()
@@ -485,8 +476,8 @@ impl BackupDialog {
                     .show(ui, |ui| {
                         ui.monospace(&self.output);
                     });
-            });
-        self.open = open;
+            }
+        });
     }
 }
 

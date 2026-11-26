@@ -13,21 +13,25 @@ mod metrics;
 mod panels;
 mod roster;
 mod session;
+mod tabs;
 mod theme;
 mod ui_elements;
 
-use adb_client::Adb;
+use adb_client::{Adb, DeviceState};
 use egui_tiles::Tree;
 
 use crate::app::App;
 use crate::layout::PanelId;
 use crate::panels::settings::SettingsAction;
+use crate::tabs::MainTab;
 
 struct TerminalApp {
     tools: panels::advanced_tools::AdvancedTools,
     inner: App,
-    layout_tree: Tree<PanelId>,
+    overview_tree: Tree<PanelId>,
+    logs_tree: Tree<PanelId>,
     layout_saver: layout_store::LayoutSaver,
+    tab: MainTab,
 }
 
 impl TerminalApp {
@@ -42,11 +46,27 @@ impl TerminalApp {
         if should_refresh {
             inner.refresh_devices();
         }
+        let (overview_tree, logs_tree) = layout_store::load_or_default();
         Self {
             tools,
             inner,
-            layout_tree: layout_store::load_or_default(),
+            overview_tree,
+            logs_tree,
             layout_saver: layout_store::LayoutSaver::default(),
+            tab: layout_store::load_selected_tab(),
+        }
+    }
+
+    /// Switches the active main tab, persisting the choice. Entering the
+    /// Flash tab refreshes the fastboot device list like the old window did.
+    fn switch_tab(&mut self, tab: MainTab) {
+        if self.tab == tab {
+            return;
+        }
+        self.tab = tab;
+        layout_store::save_selected_tab(tab);
+        if tab == MainTab::Flash && !self.inner.flash.is_busy() {
+            self.inner.flash.refresh_fastboot_devices();
         }
     }
 }
@@ -55,19 +75,29 @@ impl eframe::App for TerminalApp {
     fn update(&mut self, ctx: &eframe::egui::Context, _frame: &mut eframe::Frame) {
         self.inner.tick(ctx);
 
-        // Global drag-and-drop for .apk / .apks / .xapk / .apkm when no modal drop window owns it.
-        if !self.inner.flash.open && !self.inner.apk.open {
-            let apk_paths: Vec<std::path::PathBuf> = ctx.input(|i| {
-                i.raw
-                    .dropped_files
-                    .iter()
-                    .filter_map(|f| f.path.clone())
-                    .filter(|p| adb_client::apk::classify_apk_path(p).is_some())
-                    .collect()
-            });
+        if let Some(tab) = self.inner.requested_tab.take() {
+            self.switch_tab(tab);
+        }
+
+        // Global drag-and-drop routing: APK bundles go to the Apps tab,
+        // anything else (ROM folders, images, manifests) to the Flash tab,
+        // whose own drop handler consumes the files this same frame.
+        let dropped: Vec<std::path::PathBuf> = ctx.input(|i| {
+            i.raw
+                .dropped_files
+                .iter()
+                .filter_map(|f| f.path.clone())
+                .collect()
+        });
+        if !dropped.is_empty() {
+            let (apk_paths, rest): (Vec<_>, Vec<_>) = dropped
+                .into_iter()
+                .partition(|p| adb_client::apk::classify_apk_path(p).is_some());
             if !apk_paths.is_empty() {
                 self.inner.apk.enqueue_paths(apk_paths);
-                self.inner.apk.open = true;
+                self.switch_tab(MainTab::Apps);
+            } else if !rest.is_empty() {
+                self.switch_tab(MainTab::Flash);
             }
         }
 
@@ -79,88 +109,71 @@ impl eframe::App for TerminalApp {
             .show_separator_line(true)
             .show(ctx, |ui| {
                 ui.horizontal_wrapped(|ui| {
-                    let apk_q = self.inner.apk.queue_len();
-                    let apk_label = if apk_q > 0 {
-                        let count = apk_q.to_string();
-                        i18n::tf("app.toolbar_install_apk_count", &[("count", &count)])
-                    } else {
-                        i18n::t("app.toolbar_install_apk").to_string()
-                    };
-                    if ui_elements::toolbar_button(
-                        ui,
-                        &apk_label,
-                        self.inner.apk.open || self.inner.apk.is_busy(),
-                        Some(theme::colors::ACCENT_GREEN),
-                    )
-                    .clicked()
-                    {
-                        self.inner.apk.open = true;
-                    }
-                    if ui_elements::toolbar_button(
-                        ui,
-                        i18n::t("app.toolbar_advanced_tools"),
-                        self.tools.open,
-                        None,
-                    )
-                    .clicked()
-                    {
-                        if !self.tools.open && !self.inner.flash.is_busy() {
-                            self.inner.flash.refresh_fastboot_devices();
+                    ui.label(
+                        eframe::egui::RichText::new(i18n::t("panel.devices"))
+                            .strong()
+                            .color(theme::colors::OFF_WHITE),
+                    );
+                    // Shared device selector: same roster/selection flow the
+                    // Devices panel uses, available from every tab.
+                    let mut picked: Option<String> = None;
+                    let selected_text = match &self.inner.roster.selected_serial {
+                        Some(serial) => {
+                            let model = self
+                                .inner
+                                .roster
+                                .devices
+                                .iter()
+                                .find(|d| &d.serial == serial)
+                                .map(|d| d.model.clone())
+                                .filter(|m| !m.is_empty());
+                            match model {
+                                Some(model) => format!("{model} ({serial})"),
+                                None => serial.clone(),
+                            }
                         }
-                        self.tools.open = true;
+                        None => i18n::t("app.no_adb_device").to_string(),
+                    };
+                    eframe::egui::ComboBox::from_id_salt("device_selector")
+                        .selected_text(selected_text)
+                        .width(300.0)
+                        .show_ui(ui, |ui| {
+                            if self.inner.roster.devices.is_empty() {
+                                ui.label(i18n::t("devices.none_found"));
+                            }
+                            for device in &self.inner.roster.devices {
+                                let name = if device.model.is_empty() {
+                                    device.serial.clone()
+                                } else {
+                                    format!("{} ({})", device.model, device.serial)
+                                };
+                                if device.state == DeviceState::Device {
+                                    let is_selected = self.inner.roster.selected_serial
+                                        .as_deref()
+                                        == Some(device.serial.as_str());
+                                    if ui.selectable_label(is_selected, name).clicked()
+                                        && !is_selected
+                                    {
+                                        picked = Some(device.serial.clone());
+                                    }
+                                } else {
+                                    ui.add_enabled_ui(false, |ui| {
+                                        ui.label(format!(
+                                            "{name} — {}",
+                                            i18n::device_state(&device.state)
+                                        ));
+                                    });
+                                }
+                            }
+                        });
+                    if let Some(serial) = picked {
+                        self.inner.select_device(serial);
                     }
-                    if ui_elements::toolbar_button(
-                        ui,
-                        i18n::t("app.toolbar_backup_transfer"),
-                        self.inner.backup.open,
-                        None,
-                    )
-                    .clicked()
-                    {
-                        self.inner.backup.open = true;
-                    }
-                    if ui_elements::toolbar_button(
-                        ui,
-                        i18n::t("app.toolbar_flash_rom"),
-                        self.inner.flash.open,
-                        None,
-                    )
-                    .clicked()
-                    {
-                        self.inner.flash.open = true;
-                        self.inner.flash.refresh_fastboot_devices();
-                    }
-                    if ui_elements::toolbar_button(
-                        ui,
-                        i18n::t("app.toolbar_stock_flash_lock"),
-                        false,
-                        Some(theme::colors::ACCENT_AMBER),
-                    )
-                    .clicked()
-                    {
-                        self.inner
-                            .flash
-                            .open_tab(panels::flash::FlashTab::LockBootloader);
-                    }
-                    if ui_elements::toolbar_button(
-                        ui,
-                        i18n::t("app.toolbar_hyperos"),
-                        self.inner.hyperos.open || self.inner.hyperos.is_busy(),
-                        Some(theme::colors::ACCENT_BLUE),
-                    )
-                    .clicked()
-                    {
-                        self.inner.hyperos.open = true;
-                    }
-                    if ui_elements::toolbar_button(
-                        ui,
-                        i18n::t("app.toolbar_ai_provider"),
-                        false,
-                        None,
-                    )
-                    .clicked()
-                    {
-                        self.inner.settings.open_from(self.inner.insight.config());
+                    if self.inner.roster.list_job_in_flight {
+                        ui.spinner();
+                        ui.label(i18n::t("ui.devices.refreshing"));
+                    } else if ui.button(i18n::t("app.refresh_devices")).clicked() {
+                        self.inner.refresh_devices();
                     }
 
                     ui.with_layout(
@@ -188,8 +201,9 @@ impl eframe::App for TerminalApp {
         {
             let title = ui_elements::title_bar(ctx, frame);
             if title.reset_layout {
-                self.layout_tree = layout::create_default_tree();
-                if layout_store::save(&self.layout_tree) {
+                self.overview_tree = layout::create_overview_tree();
+                self.logs_tree = layout::create_logs_tree();
+                if layout_store::save(&self.overview_tree, &self.logs_tree) {
                     self.layout_saver.clear_dirty();
                 } else {
                     self.layout_saver.mark_edit();
@@ -197,58 +211,140 @@ impl eframe::App for TerminalApp {
             }
             if title.open_ai_settings {
                 self.inner.settings.open_from(self.inner.insight.config());
+                self.switch_tab(MainTab::Logs);
             }
         }
 
-        if let Some(action) = panels::settings::show(ctx, &mut self.inner.settings) {
-            match action {
-                SettingsAction::Save(config) => {
-                    insight_store::save(&config);
-                    self.inner.insight.set_config(config);
+        let tab_frame = eframe::egui::Frame::default()
+            .fill(theme::colors::PANEL_BG)
+            .inner_margin(eframe::egui::Margin::symmetric(12, 4));
+        eframe::egui::TopBottomPanel::top("dashboard_tabs")
+            .frame(tab_frame)
+            .show_separator_line(true)
+            .show(ctx, |ui| {
+                let pairs: Vec<(MainTab, &str)> =
+                    MainTab::ALL.iter().map(|tab| (*tab, tab.title())).collect();
+                let mut current = self.tab;
+                ui_elements::folder_tab_bar(ui, &mut current, &pairs);
+                if current != self.tab {
+                    self.switch_tab(current);
                 }
-                SettingsAction::Cancel => {}
-            }
+            });
+
+        // AI provider settings live as a docked sheet inside the Log & Lỗi
+        // tab (opened from the Insight panel's Configure action).
+        if self.tab == MainTab::Logs && self.inner.settings.is_open() {
+            eframe::egui::TopBottomPanel::bottom("ai_settings_sheet")
+                .frame(bar_frame)
+                .resizable(false)
+                .show(ctx, |ui| {
+                    eframe::egui::ScrollArea::vertical()
+                        .max_height(360.0)
+                        .show(ui, |ui| {
+                            ui_elements::tool_card(ui, |ui| {
+                                ui_elements::section_header(ui, i18n::t("settings.title"), "");
+                                ui.add_space(4.0);
+                                if let Some(action) =
+                                    panels::settings::show_in(ui, &mut self.inner.settings)
+                                {
+                                    match action {
+                                        SettingsAction::Save(config) => {
+                                            insight_store::save(&config);
+                                            self.inner.insight.set_config(config);
+                                        }
+                                        SettingsAction::Cancel => {}
+                                    }
+                                }
+                            });
+                        });
+                });
         }
 
         let mut layout_dirty = false;
+        let mut goto: Option<MainTab> = None;
         eframe::egui::CentralPanel::default()
             .frame(ui_elements::shell_frame(ctx))
             .show(ctx, |ui| {
-                ui_elements::canvas_margin_frame().show(ui, |ui| {
-                    layout::show(
-                        ui,
-                        &mut self.layout_tree,
-                        &mut self.inner,
-                        &mut layout_dirty,
-                    );
+                ui_elements::canvas_margin_frame().show(ui, |ui| match self.tab {
+                    MainTab::Overview => {
+                        layout::show(
+                            ui,
+                            &mut self.overview_tree,
+                            &mut self.inner,
+                            &mut layout_dirty,
+                        );
+                    }
+                    MainTab::Logs => {
+                        layout::show(
+                            ui,
+                            &mut self.logs_tree,
+                            &mut self.inner,
+                            &mut layout_dirty,
+                        );
+                    }
+                    MainTab::Apps => {
+                        eframe::egui::ScrollArea::vertical()
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| {
+                                let serial = self.inner.roster.selected_serial.clone();
+                                self.inner.cleanup.show_in(
+                                    ui,
+                                    serial.as_deref(),
+                                    &self.inner.metrics.app_storage,
+                                );
+                                ui.add_space(8.0);
+                                self.inner.apk.show_in(ui, ctx);
+                            });
+                    }
+                    MainTab::HyperOs => {
+                        eframe::egui::ScrollArea::vertical()
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| {
+                                self.inner.hyperos.show_in(ui, ctx);
+                            });
+                    }
+                    MainTab::Flash => {
+                        eframe::egui::ScrollArea::vertical()
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| {
+                                let serial = self.inner.roster.selected_serial.clone();
+                                self.inner.flash.show_in(ui, ctx, serial.as_deref());
+                            });
+                    }
+                    MainTab::Tools => {
+                        eframe::egui::ScrollArea::vertical()
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| {
+                                let serial = self.inner.roster.selected_serial.clone();
+                                if let Some(tab) = self.tools.show_in(
+                                    ui,
+                                    ctx,
+                                    serial.as_deref(),
+                                    &mut self.inner.flash,
+                                    &mut self.inner.apk,
+                                    &mut self.inner.hyperos,
+                                ) {
+                                    goto = Some(tab);
+                                }
+                                ui.add_space(8.0);
+                                self.inner.backup.show_in(ui, ctx);
+                            });
+                    }
                 });
             });
-        self.inner.cleanup.show(
-            ctx,
-            self.inner.roster.selected_serial.as_deref(),
-            &self.inner.metrics.app_storage,
-        );
-        self.inner.backup.show(ctx);
-        self.inner.apk.show(ctx);
-        self.inner.hyperos.show(ctx);
-        self.inner
-            .flash
-            .show(ctx, self.inner.roster.selected_serial.as_deref());
-        self.tools.show(
-            ctx,
-            self.inner.roster.selected_serial.as_deref(),
-            &mut self.inner.flash,
-            &mut self.inner.apk,
-            &mut self.inner.hyperos,
-        );
+        if let Some(tab) = goto {
+            self.switch_tab(tab);
+        }
         if layout_dirty {
             self.layout_saver.mark_edit();
         }
-        self.layout_saver.tick(ctx, &self.layout_tree);
+        self.layout_saver
+            .tick(ctx, &self.overview_tree, &self.logs_tree);
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
-        self.layout_saver.flush(&self.layout_tree);
+        self.layout_saver
+            .flush(&self.overview_tree, &self.logs_tree);
         self.inner.shutdown();
     }
 }

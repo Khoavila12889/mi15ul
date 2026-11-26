@@ -91,7 +91,6 @@ enum FlashEvent {
 }
 
 pub struct FlashDialog {
-    pub open: bool,
     tab: FlashTab,
     // Tool binaries
     fastboot_bin: String,
@@ -159,7 +158,6 @@ impl Default for FlashDialog {
     fn default() -> Self {
         let (tx, rx) = unbounded();
         Self {
-            open: false,
             tab: FlashTab::FullRom,
             fastboot_bin: flash::resolve_fastboot(None),
             adb_bin: flash::resolve_adb(None),
@@ -563,14 +561,6 @@ impl FlashDialog {
         changed
     }
 
-    pub fn open_tab(&mut self, tab: FlashTab) {
-        self.open = true;
-        self.tab = tab;
-        if !self.is_flashing {
-            self.refresh_fastboot_devices();
-        }
-    }
-
     pub fn sync_tool_paths(&mut self, adb: &str, fastboot: &str) {
         if self.is_flashing {
             return;
@@ -587,36 +577,15 @@ impl FlashDialog {
         self.is_flashing || self.pending_bg_tasks > 0
     }
 
-    pub fn show(&mut self, ctx: &egui::Context, adb_serial: Option<&str>) {
+    /// Renders the flash UI inside the Flash & Khóa tab.
+    pub fn show_in(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, adb_serial: Option<&str>) {
         self.bind_adb_device(adb_serial);
         if self.tick() {
             ctx.request_repaint();
         }
 
-        if !self.open {
-            return;
-        }
-
         self.handle_dropped_files(ctx);
-
-        let mut open = self.open;
-        egui::Window::new(i18n::t("flash.window_title"))
-            .open(&mut open)
-            .default_size([920.0, 740.0])
-            .min_width(540.0)
-            .resizable(true)
-            .vscroll(true)
-            .show(ctx, |ui| {
-                self.render_ui(ui, ctx);
-            });
-
-        if !open && self.is_flashing {
-            self.open = true;
-            self.status = i18n::t("flash.busy_close").into();
-            self.error = true;
-        } else {
-            self.open = open;
-        }
+        self.render_ui(ui, ctx);
     }
 
     fn handle_dropped_files(&mut self, ctx: &egui::Context) {
@@ -670,70 +639,6 @@ impl FlashDialog {
                 }
             }
         }
-    }
-
-    pub fn render_embedded_stock_module(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        let is_busy = self.is_busy();
-
-        ui.horizontal_wrapped(|ui| {
-            if ui
-                .add_enabled(!is_busy, egui::Button::new(i18n::t("flash.emb_refresh")))
-                .clicked()
-            {
-                self.refresh_fastboot_devices();
-            }
-            if let Some(adb) = self.selected_adb.clone() {
-                if ui
-                    .add_enabled(!is_busy, egui::Button::new(i18n::t("flash.emb_reboot_bl")))
-                    .clicked()
-                {
-                    self.run_adb_reboot(adb, Some("bootloader"));
-                }
-            }
-            if ui.button(i18n::t("flash.emb_open_full")).clicked() {
-                self.open_tab(FlashTab::LockBootloader);
-            }
-            if self.pending_bg_tasks > 0 && !self.is_flashing {
-                ui.spinner();
-            }
-        });
-
-        self.render_fastboot_connection_bar(ui, is_busy);
-
-        if self.is_flashing || self.progress_percent.is_some() || self.stock_progress.is_some() {
-            self.render_live_progress_block(ui, ctx);
-        }
-
-        ui.colored_label(
-            if self.error {
-                egui::Color32::LIGHT_RED
-            } else {
-                egui::Color32::LIGHT_BLUE
-            },
-            &self.status,
-        );
-
-        ui.add_space(4.0);
-        ui.add_enabled_ui(!is_busy, |ui| {
-            self.render_stock_rom_selector_and_run(ui);
-        });
-
-        ui.add_space(4.0);
-        ui.horizontal_wrapped(|ui| {
-            ui.small(i18n::t("flash.emb_other"));
-            if ui.small_button(i18n::t("flash.tab_full")).clicked() {
-                self.open_tab(FlashTab::FullRom);
-            }
-            if ui.small_button(i18n::t("flash.tab_single")).clicked() {
-                self.open_tab(FlashTab::SinglePartition);
-            }
-            if ui.small_button(i18n::t("flash.tab_sideload")).clicked() {
-                self.open_tab(FlashTab::AdbSideload);
-            }
-            if ui.small_button(i18n::t("flash.tab_guide")).clicked() {
-                self.open_tab(FlashTab::Guide);
-            }
-        });
     }
 
     fn render_fastboot_connection_bar(&mut self, ui: &mut egui::Ui, is_busy: bool) {

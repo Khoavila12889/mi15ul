@@ -5,12 +5,8 @@ use crate::i18n;
 use crate::insight_store;
 use crate::theme::{self, colors};
 
-/// Label column + spacing + text field width, matching the grid below.
-const AI_PROVIDER_DIALOG_WIDTH: f32 = 540.0;
+/// Text field width, matching the grid below.
 const AI_PROVIDER_FIELD_WIDTH: f32 = 340.0;
-
-/// Gap from the window top/right edges to the dialog.
-const AI_PROVIDER_DIALOG_EDGE: f32 = 24.0;
 
 const OPENCODE_API_URL: &str = "https://opencode.ai/inference/openai/v1";
 const OPENAI_URL: &str = "https://api.openai.com/v1";
@@ -128,6 +124,11 @@ pub struct SettingsDialog {
 }
 
 impl SettingsDialog {
+    /// Whether the settings form is currently shown (Log & Lỗi tab sheet).
+    pub fn is_open(&self) -> bool {
+        self.open
+    }
+
     /// Copies live config into drafts and opens the dialog.
     pub fn open_from(&mut self, config: &InsightConfig) {
         self.preset = Preset::from_config(config);
@@ -174,42 +175,19 @@ impl SettingsDialog {
     }
 }
 
-/// Draws the AI provider window when open. Returns Save or Cancel when the user finishes.
-pub fn show(ctx: &egui::Context, dialog: &mut SettingsDialog) -> Option<SettingsAction> {
+/// Draws the AI provider form inside the Log & Lỗi tab when open.
+/// Returns Save or Cancel when the user finishes.
+pub fn show_in(ui: &mut egui::Ui, dialog: &mut SettingsDialog) -> Option<SettingsAction> {
     if !dialog.open {
         return None;
     }
 
-    let screen = ctx.screen_rect();
-    let pos = egui::pos2(
-        screen.max.x - AI_PROVIDER_DIALOG_EDGE - AI_PROVIDER_DIALOG_WIDTH,
-        theme::TITLE_BAR_HEIGHT + AI_PROVIDER_DIALOG_EDGE,
-    );
-
-    let mut open = true;
     let mut save = false;
     let mut cancel = false;
     let mut detect = false;
-    egui::Window::new(i18n::t("settings.title"))
-        .id(egui::Id::new("ai_provider_settings"))
-        .open(&mut open)
-        .collapsible(false)
-        .resizable(false)
-        .movable(false)
-        .fixed_pos(pos)
-        .default_width(AI_PROVIDER_DIALOG_WIDTH)
-        .min_width(AI_PROVIDER_DIALOG_WIDTH)
-        .max_width(AI_PROVIDER_DIALOG_WIDTH)
-        .default_height(0.0)
-        .min_height(0.0)
-        .frame(
-            egui::Frame::default()
-                .fill(colors::PANEL_BG)
-                .stroke(egui::Stroke::new(1.0, colors::PANEL_BORDER))
-                .corner_radius(egui::CornerRadius::same(theme::PANEL_CORNER_RADIUS))
-                .inner_margin(egui::Margin::same(theme::PANEL_INNER_PADDING)),
-        )
-        .show(ctx, |ui| {
+    {
+        let ui = &mut *ui;
+        {
             egui::Grid::new("ai_provider_fields")
                 .num_columns(2)
                 .spacing([8.0, 6.0])
@@ -308,7 +286,8 @@ pub fn show(ctx: &egui::Context, dialog: &mut SettingsDialog) -> Option<Settings
                     });
                 });
             });
-        });
+        }
+    }
 
     if detect {
         dialog.detect_local();
@@ -322,7 +301,7 @@ pub fn show(ctx: &egui::Context, dialog: &mut SettingsDialog) -> Option<Settings
             api_key: dialog.api_key.clone(),
         }));
     }
-    if cancel || !open {
+    if cancel {
         dialog.open = false;
         return Some(SettingsAction::Cancel);
     }

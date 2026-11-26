@@ -119,6 +119,8 @@ pub const PANEL_INNER_PADDING: i8 = 8;
 pub const PANEL_CANVAS_MARGIN: i8 = 12;
 
 /// Height of the custom macOS title bar under the native traffic lights.
+/// Only referenced by the macOS title bar, hence the allow on other targets.
+#[allow(dead_code)]
 pub const TITLE_BAR_HEIGHT: f32 = 36.0;
 
 /// Width of the native traffic-light hit region from the left edge.

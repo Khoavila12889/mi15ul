@@ -67,7 +67,6 @@ enum HyperOsEvent {
 }
 
 pub struct HyperOsDialog {
-    pub open: bool,
     adb_bin: String,
     selected_serial: Option<String>,
     active_tab: HyperOsTab,
@@ -138,7 +137,6 @@ impl Default for HyperOsDialog {
             .collect();
 
         Self {
-            open: false,
             adb_bin: hyperos::resolve_adb_verified(None),
             selected_serial: None,
             active_tab: HyperOsTab::Notifications,
@@ -193,7 +191,7 @@ impl HyperOsDialog {
                 backup: "(chưa sao lưu)".into(),
                 has_backup: false,
             };
-            if self.open && next.is_some() && !self.busy {
+            if next.is_some() && !self.busy {
                 self.refresh_device_info();
             }
         }
@@ -445,50 +443,39 @@ impl HyperOsDialog {
         changed
     }
 
-    pub fn show(&mut self, ctx: &egui::Context) {
-        if !self.open {
-            return;
-        }
+    /// Renders the HyperOS tools inside the HyperOS main tab.
+    pub fn show_in(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         if self.device_info.is_none() && self.selected_serial.is_some() && !self.busy {
             self.refresh_device_info();
         }
 
-        let mut open = self.open;
-        egui::Window::new(i18n::t("hyperos.window_title"))
-            .open(&mut open)
-            .default_width(920.0)
-            .default_height(720.0)
-            .vscroll(false)
-            .show(ctx, |ui| {
-                self.render_header(ui);
-                ui.add_space(6.0);
+        self.render_header(ui);
+        ui.add_space(6.0);
 
-                ui_elements::folder_tab_bar(
-                    ui,
-                    &mut self.active_tab,
-                    &[
-                        (HyperOsTab::Notifications, i18n::t("hyperos.tab_notifications")),
-                        (HyperOsTab::LocaleAndTheme, i18n::t("hyperos.tab_locale_theme")),
-                        (HyperOsTab::Debloat, i18n::t("hyperos.tab_debloat")),
-                        (HyperOsTab::BankLock, i18n::t("hyperos.tab_bank_lock")),
-                    ],
-                );
-                ui.add_space(6.0);
+        ui_elements::folder_tab_bar(
+            ui,
+            &mut self.active_tab,
+            &[
+                (HyperOsTab::Notifications, i18n::t("hyperos.tab_notifications")),
+                (HyperOsTab::LocaleAndTheme, i18n::t("hyperos.tab_locale_theme")),
+                (HyperOsTab::Debloat, i18n::t("hyperos.tab_debloat")),
+                (HyperOsTab::BankLock, i18n::t("hyperos.tab_bank_lock")),
+            ],
+        );
+        ui.add_space(6.0);
 
-                let has_device = self.selected_serial.is_some();
-                let can_act = has_device && !self.busy;
+        let has_device = self.selected_serial.is_some();
+        let can_act = has_device && !self.busy;
 
-                match self.active_tab {
-                    HyperOsTab::Notifications => self.render_tab_notifications(ui, can_act),
-                    HyperOsTab::LocaleAndTheme => self.render_tab_locale_theme(ui, can_act),
-                    HyperOsTab::Debloat => self.render_tab_debloat(ui, can_act),
-                    HyperOsTab::BankLock => self.render_tab_bank_lock(ui, can_act),
-                }
+        match self.active_tab {
+            HyperOsTab::Notifications => self.render_tab_notifications(ui, can_act),
+            HyperOsTab::LocaleAndTheme => self.render_tab_locale_theme(ui, can_act),
+            HyperOsTab::Debloat => self.render_tab_debloat(ui, can_act),
+            HyperOsTab::BankLock => self.render_tab_bank_lock(ui, can_act),
+        }
 
-                ui.add_space(6.0);
-                self.render_log_and_status(ui, ctx);
-            });
-        self.open = open;
+        ui.add_space(6.0);
+        self.render_log_and_status(ui, ctx);
 
         if self.is_busy() {
             ctx.request_repaint_after(Duration::from_millis(120));

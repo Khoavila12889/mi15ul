@@ -13,6 +13,7 @@ use crate::format::format_bytes_mb;
 use crate::i18n;
 use crate::metrics::PackageStorageState;
 use crate::theme::{self, colors};
+use crate::ui_elements;
 
 /// Packages that must never be offered for removal: removing them can brick
 /// the UI, telephony, permissions, or the default launcher.
@@ -68,8 +69,7 @@ const PROTECTED_PACKAGES: &[&str] = &[
     "com.transsion.XOSLauncher",
 ];
 
-const WINDOW_WIDTH: f32 = 780.0;
-const WINDOW_HEIGHT: f32 = 560.0;
+
 const LIST_HEIGHT: f32 = 330.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -114,7 +114,6 @@ struct Row {
 }
 
 pub struct AppCleanup {
-    pub open: bool,
     search: String,
     show_system: bool,
     selected: HashSet<String>,
@@ -138,7 +137,6 @@ pub struct AppCleanup {
 impl Default for AppCleanup {
     fn default() -> Self {
         Self {
-            open: false,
             search: String::new(),
             show_system: true,
             selected: HashSet::new(),
@@ -157,9 +155,9 @@ impl Default for AppCleanup {
 }
 
 impl AppCleanup {
-    /// Opens the dialog, keeping the current search and selection.
+    /// Prepares the tab view, keeping the current search and selection
+    /// but dropping any stale pending confirmation.
     pub fn open(&mut self) {
-        self.open = true;
         self.pending = None;
         self.pending_system.clear();
     }
@@ -259,15 +257,13 @@ impl AppCleanup {
         true
     }
 
-    pub fn show(
+    /// Renders the cleanup UI inside the Apps tab.
+    pub fn show_in(
         &mut self,
-        ctx: &egui::Context,
+        ui: &mut egui::Ui,
         serial: Option<&str>,
         storage: &PackageStorageState,
     ) {
-        if !self.open {
-            return;
-        }
         if let Some(s) = serial {
             if self.protected_serial.as_deref() != Some(s) {
                 self.protected_serial = Some(s.to_string());
@@ -282,37 +278,15 @@ impl AppCleanup {
             }
         }
 
-        let mut open = true;
-        egui::Window::new(i18n::t("cleanup.title"))
-            .id(egui::Id::new("app_cleanup"))
-            .open(&mut open)
-            .collapsible(false)
-            .resizable(true)
-            .default_width(WINDOW_WIDTH)
-            .default_height(WINDOW_HEIGHT)
-            .min_width(560.0)
-            .min_height(380.0)
-            .default_pos(egui::pos2(300.0, 110.0))
-            .frame(
-                egui::Frame::default()
-                    .fill(colors::PANEL_BG)
-                    .stroke(egui::Stroke::new(1.0, colors::PANEL_BORDER))
-                    .corner_radius(egui::CornerRadius::same(theme::PANEL_CORNER_RADIUS))
-                    .inner_margin(egui::Margin::same(theme::PANEL_INNER_PADDING)),
-            )
-            .show(ctx, |ui| {
-                if self.pending.is_some() {
-                    self.show_confirmation(ui, serial, storage);
-                } else {
-                    self.show_list(ui, serial, storage);
-                }
-            });
-
-        if !open {
-            self.open = false;
-            self.pending = None;
-            self.pending_system.clear();
-        }
+        ui_elements::tool_card(ui, |ui| {
+            ui_elements::section_header(ui, i18n::t("cleanup.title"), "");
+            ui.add_space(4.0);
+            if self.pending.is_some() {
+                self.show_confirmation(ui, serial, storage);
+            } else {
+                self.show_list(ui, serial, storage);
+            }
+        });
     }
 
     fn show_list(

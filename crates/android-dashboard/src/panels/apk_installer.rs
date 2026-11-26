@@ -41,7 +41,6 @@ enum ApkEvent {
 }
 
 pub struct ApkInstallerDialog {
-    pub open: bool,
     adb_bin: String,
     selected_serial: Option<String>,
     readiness: Option<Result<DeviceInstallReadiness, String>>,
@@ -64,7 +63,6 @@ impl Default for ApkInstallerDialog {
     fn default() -> Self {
         let (tx, rx) = unbounded();
         Self {
-            open: false,
             adb_bin: apk::resolve_adb(None),
             selected_serial: None,
             readiness: None,
@@ -105,10 +103,6 @@ impl ApkInstallerDialog {
 
     pub fn is_busy(&self) -> bool {
         self.is_installing || self.pending_pickers > 0 || self.checking_readiness
-    }
-
-    pub fn queue_len(&self) -> usize {
-        self.queue.len()
     }
 
     fn adb_override(&self) -> Option<String> {
@@ -257,66 +251,12 @@ impl ApkInstallerDialog {
         changed
     }
 
-    pub fn show(&mut self, ctx: &egui::Context) {
-        if !self.open {
-            return;
-        }
-
+    /// Renders the installer inside the Apps tab. File drops are routed
+    /// globally by `TerminalApp` (APK files land here via `enqueue_paths`).
+    pub fn show_in(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         let is_hovering_files =
             !self.is_installing && ctx.input(|i| !i.raw.hovered_files.is_empty());
-        if !self.is_installing {
-            let dropped = ctx.input(|i| i.raw.dropped_files.clone());
-            let paths: Vec<PathBuf> = dropped.into_iter().filter_map(|f| f.path).collect();
-            if !paths.is_empty() {
-                self.enqueue_paths(paths);
-            }
-        }
-
-        let mut open = self.open;
-        egui::Window::new(i18n::t("apk.window_title"))
-            .open(&mut open)
-            .default_size([760.0, 620.0])
-            .min_width(500.0)
-            .resizable(true)
-            .vscroll(true)
-            .show(ctx, |ui| {
-                self.render_full_ui(ui, ctx, is_hovering_files);
-            });
-
-        if !open && self.is_installing {
-            self.open = true;
-            self.status = "Đang cài APK — chờ hoàn tất trước khi đóng cửa sổ.".into();
-            self.error = true;
-        } else {
-            self.open = open;
-        }
-    }
-
-    pub fn render_embedded_card(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        let is_hovering_files =
-            !self.is_installing && ctx.input(|i| !i.raw.hovered_files.is_empty());
-        ui.horizontal_wrapped(|ui| {
-            self.render_device_badge_row(ui);
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.small_button("Mở cửa sổ APK đầy đủ…").clicked() {
-                    self.open = true;
-                }
-            });
-        });
-
-        self.render_miui_warning(ui);
-        ui.add_space(4.0);
-        self.render_drop_and_pick_bar(ui, is_hovering_files);
-        ui.add_space(4.0);
-        self.render_options_row(ui);
-
-        if !self.queue.is_empty() {
-            ui.add_space(4.0);
-            self.render_queue_list(ui, 150.0);
-        }
-
-        ui.add_space(4.0);
-        self.render_action_and_progress(ui, ctx);
+        self.render_full_ui(ui, ctx, is_hovering_files);
     }
 
     fn render_full_ui(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, hovering_files: bool) {
@@ -860,11 +800,11 @@ mod tests {
 
         let mut dlg = ApkInstallerDialog::default();
         assert_eq!(dlg.enqueue_paths(vec![a.clone(), a.clone()]), 1);
-        assert_eq!(dlg.queue_len(), 1);
+        assert_eq!(dlg.queue.len(), 1);
 
         // Scan directory adds only `b` (dedupes `a`).
         assert_eq!(dlg.enqueue_paths(vec![dir.clone()]), 1);
-        assert_eq!(dlg.queue_len(), 2);
+        assert_eq!(dlg.queue.len(), 2);
 
         // Mark `a` as Failed, then re-enqueuing `a` resets it to Queued.
         dlg.queue[0].status = ApkItemStatus::Failed("err".into());

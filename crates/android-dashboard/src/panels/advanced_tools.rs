@@ -1,4 +1,5 @@
 use crate::i18n;
+use crate::tabs::MainTab;
 use crate::theme::colors;
 use crate::ui_elements;
 use crossbeam_channel::Receiver;
@@ -62,7 +63,6 @@ struct ResultMessage {
 }
 pub struct AdvancedTools {
     zalo: super::zalo_cleanup::ZaloCleanup,
-    pub open: bool,
     config: Config,
     package: String,
     output: String,
@@ -78,7 +78,6 @@ impl Default for AdvancedTools {
             .unwrap_or_default();
         Self {
             zalo: Default::default(),
-            open: false,
             config,
             package: String::new(),
             output: String::new(),
@@ -181,14 +180,18 @@ impl AdvancedTools {
             });
         });
     }
-    pub fn show(
+    /// Renders the remaining advanced tools inside the Tools main tab.
+    /// Returns a main tab to switch to when the user picks a feature that
+    /// now lives in its own tab (HyperOS).
+    pub fn show_in(
         &mut self,
+        ui: &mut egui::Ui,
         ctx: &egui::Context,
         serial: Option<&str>,
         flash: &mut super::flash::FlashDialog,
         apk: &mut super::apk_installer::ApkInstallerDialog,
         hyperos: &mut super::hyperos::HyperOsDialog,
-    ) {
+    ) -> Option<MainTab> {
         if let Some(rx) = &self.result {
             match rx.try_recv() {
                 Ok(r) => {
@@ -214,16 +217,10 @@ impl AdvancedTools {
                 self.mirror = None;
             }
         }
-        if !self.open {
-            return;
-        }
-        let mut open = self.open;
-        egui::Window::new(i18n::t("advanced.title"))
-            .open(&mut open)
-            .default_width(820.0)
-            .default_height(680.0)
-            .vscroll(true)
-            .show(ctx, |ui| {
+        let mut goto: Option<MainTab> = None;
+        {
+            let ui = &mut *ui;
+            {
                 ui_elements::tool_card(ui, |ui| {
                     ui.horizontal_wrapped(|ui| {
                         ui_elements::section_header(
@@ -250,22 +247,6 @@ impl AdvancedTools {
                 });
                 ui.add_space(6.0);
                 ui_elements::tool_card(ui, |ui| {
-                    egui::CollapsingHeader::new(i18n::t("advanced.header_apk"))
-                        .default_open(apk.is_busy() || apk.queue_len() > 0)
-                        .show(ui, |ui| {
-                            apk.render_embedded_card(ui, ctx);
-                        });
-                });
-                ui.add_space(6.0);
-                ui_elements::tool_card(ui, |ui| {
-                    egui::CollapsingHeader::new(i18n::t("advanced.header_stock"))
-                        .default_open(flash.is_busy())
-                        .show(ui, |ui| {
-                            flash.render_embedded_stock_module(ui, ctx);
-                        });
-                });
-                ui.add_space(6.0);
-                ui_elements::tool_card(ui, |ui| {
                     self.zalo.show(ui, serial, &self.config.adb);
                 });
                 ui.add_space(6.0);
@@ -284,7 +265,7 @@ impl AdvancedTools {
                             )
                             .clicked()
                             {
-                                hyperos.open = true;
+                                goto = Some(MainTab::HyperOs);
                             }
                         });
                     });
@@ -501,8 +482,9 @@ impl AdvancedTools {
                             );
                         });
                 });
-            });
-        self.open = open;
+            }
+        }
+        goto
     }
 }
 impl Drop for AdvancedTools {

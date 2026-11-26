@@ -6,6 +6,7 @@ use crate::app::App;
 use crate::i18n;
 use crate::panels;
 use crate::panels::devices::DevicesAction;
+use crate::tabs::MainTab;
 use crate::theme;
 use crate::ui_elements;
 
@@ -104,7 +105,9 @@ impl TryFrom<String> for PanelId {
     }
 }
 
-pub fn create_default_tree() -> Tree<PanelId> {
+/// Cây ô cho tab Tổng quan: thiết bị, đồng hồ RAM/bộ nhớ, chi tiết bộ nhớ,
+/// lưu lượng mạng và lưu lượng ứng dụng.
+pub fn create_overview_tree() -> Tree<PanelId> {
     let mut tiles = egui_tiles::Tiles::default();
 
     let devices = tiles.insert_pane(PanelId::Devices);
@@ -114,25 +117,16 @@ pub fn create_default_tree() -> Tree<PanelId> {
     let system_stats = tiles.insert_pane(PanelId::SystemStats);
     let left_column = tiles.insert_vertical_tile(vec![devices, gauges, system_stats]);
 
-    let logcat_all = tiles.insert_pane(PanelId::LogcatAll);
     let network = tiles.insert_pane(PanelId::Network);
     let protocols = tiles.insert_pane(PanelId::Protocols);
-    let middle_column = tiles.insert_vertical_tile(vec![logcat_all, network, protocols]);
+    let right_column = tiles.insert_vertical_tile(vec![network, protocols]);
 
-    let logcat_errors = tiles.insert_pane(PanelId::LogcatErrors);
-    let insight = tiles.insert_pane(PanelId::Insight);
-    let right_column = tiles.insert_vertical_tile(vec![logcat_errors, insight]);
-
-    let root = tiles.insert_horizontal_tile(vec![left_column, middle_column, right_column]);
+    let root = tiles.insert_horizontal_tile(vec![left_column, right_column]);
 
     set_linear_shares(
         &mut tiles,
         root,
-        &[
-            (left_column, COL_SHARE),
-            (middle_column, COL_SHARE),
-            (right_column, COL_SHARE),
-        ],
+        &[(left_column, COL_SHARE), (right_column, COL_SHARE)],
     );
     set_linear_shares(
         &mut tiles,
@@ -150,12 +144,28 @@ pub fn create_default_tree() -> Tree<PanelId> {
     );
     set_linear_shares(
         &mut tiles,
-        middle_column,
-        &[
-            (logcat_all, LOGCAT_SHARE),
-            (network, COL_SHARE),
-            (protocols, COL_SHARE),
-        ],
+        right_column,
+        &[(network, COL_SHARE), (protocols, COL_SHARE)],
+    );
+
+    Tree::new("android_dashboard_overview_tiles", root, tiles)
+}
+
+/// Cây ô cho tab Log & Lỗi: logcat, lỗi logcat và phân tích AI.
+pub fn create_logs_tree() -> Tree<PanelId> {
+    let mut tiles = egui_tiles::Tiles::default();
+
+    let logcat_all = tiles.insert_pane(PanelId::LogcatAll);
+    let logcat_errors = tiles.insert_pane(PanelId::LogcatErrors);
+    let insight = tiles.insert_pane(PanelId::Insight);
+    let right_column = tiles.insert_vertical_tile(vec![logcat_errors, insight]);
+
+    let root = tiles.insert_horizontal_tile(vec![logcat_all, right_column]);
+
+    set_linear_shares(
+        &mut tiles,
+        root,
+        &[(logcat_all, LOGCAT_SHARE), (right_column, COL_SHARE)],
     );
     set_linear_shares(
         &mut tiles,
@@ -163,7 +173,7 @@ pub fn create_default_tree() -> Tree<PanelId> {
         &[(logcat_errors, LOGCAT_SHARE), (insight, INSIGHT_SHARE)],
     );
 
-    Tree::new("android_dashboard_tiles", root, tiles)
+    Tree::new("android_dashboard_logs_tiles", root, tiles)
 }
 
 fn set_linear_shares(
@@ -332,7 +342,7 @@ impl Behavior<PanelId> for AppTilesBehavior<'_> {
                             i18n::t("panel.action.backup"),
                             i18n::t("panel.action.backup_hover"),
                         ) {
-                            self.app.backup.open = true;
+                            self.app.requested_tab = Some(MainTab::Tools);
                         }
                         if ui_elements::header_action(
                             ui,
@@ -340,6 +350,7 @@ impl Behavior<PanelId> for AppTilesBehavior<'_> {
                             i18n::t("panel.action.cleanup_hover"),
                         ) {
                             self.app.cleanup.open();
+                            self.app.requested_tab = Some(MainTab::Apps);
                         }
                     },
                     |ui| {
@@ -380,12 +391,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_tree_json_round_trips() {
-        let original = create_default_tree();
-        let json = serde_json::to_string(&original).expect("serialize default tree");
-        let restored: Tree<PanelId> =
-            serde_json::from_str(&json).expect("deserialize default tree");
-        assert_eq!(original, restored);
+    fn default_trees_json_round_trip() {
+        for original in [create_overview_tree(), create_logs_tree()] {
+            let json = serde_json::to_string(&original).expect("serialize default tree");
+            let restored: Tree<PanelId> =
+                serde_json::from_str(&json).expect("deserialize default tree");
+            assert_eq!(original, restored);
+        }
     }
 
     #[test]
@@ -398,7 +410,7 @@ mod tests {
 
     #[test]
     fn default_tree_pretty_json_has_panes_and_shares() {
-        let json = serde_json::to_string_pretty(&create_default_tree()).expect("pretty json");
+        let json = serde_json::to_string_pretty(&create_overview_tree()).expect("pretty json");
         assert!(
             json.contains("\"Pane\": \"Devices\"") || json.contains("\"Pane\":\"Devices\""),
             "missing Devices pane: {json}"
