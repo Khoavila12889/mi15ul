@@ -18,6 +18,7 @@ mod storage_gauge;
 pub mod transfer;
 pub mod flash;
 pub mod hyperos;
+pub mod hyperos_vi;
 
 pub use adb::Adb;
 pub use app_storage::{AppStoragePoller, AppStorageUpdate, PackageStorage};

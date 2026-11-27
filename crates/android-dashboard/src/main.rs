@@ -103,12 +103,18 @@ impl eframe::App for TerminalApp {
 
         let bar_frame = eframe::egui::Frame::default()
             .fill(theme::colors::PANEL_BG)
-            .inner_margin(eframe::egui::Margin::symmetric(12, 7));
+            .inner_margin(eframe::egui::Margin::symmetric(12, 8));
         eframe::egui::TopBottomPanel::top("dashboard_actions")
             .frame(bar_frame)
             .show_separator_line(true)
             .show(ctx, |ui| {
                 ui.horizontal_wrapped(|ui| {
+                    ui.label(
+                        eframe::egui::RichText::new("◆ Android Dashboard")
+                            .strong()
+                            .color(theme::colors::ACCENT_CYAN),
+                    );
+                    ui.separator();
                     ui.label(
                         eframe::egui::RichText::new(i18n::t("panel.devices"))
                             .strong()
@@ -172,24 +178,41 @@ impl eframe::App for TerminalApp {
                     if self.inner.roster.list_job_in_flight {
                         ui.spinner();
                         ui.label(i18n::t("ui.devices.refreshing"));
-                    } else if ui.button(i18n::t("app.refresh_devices")).clicked() {
+                    } else if ui_elements::pulsing_cta_button(
+                        ui,
+                        &format!("↻ {}", i18n::t("app.refresh_devices")),
+                        theme::colors::ACCENT_BLUE,
+                        self.inner.roster.selected_serial.is_none(),
+                    )
+                    .clicked()
+                    {
                         self.inner.refresh_devices();
                     }
 
                     ui.with_layout(
                         eframe::egui::Layout::right_to_left(eframe::egui::Align::Center),
                         |ui| {
+                            let audit_dir = audit::audit_dir();
+                            if ui
+                                .button("Audit Log")
+                                .on_hover_text(format!("Mở thư mục nhật ký kiểm toán: {}", audit_dir.display()))
+                                .clicked()
+                            {
+                                ui_elements::open_folder_in_os(&audit_dir);
+                            }
                             if let Some(serial) = &self.inner.roster.selected_serial {
-                                ui_elements::status_pill(
+                                ui_elements::pulsing_status_pill(
                                     ui,
                                     &format!("● {serial}"),
                                     theme::colors::ACCENT_GREEN,
+                                    true,
                                 );
                             } else {
-                                ui_elements::status_pill(
+                                ui_elements::pulsing_status_pill(
                                     ui,
                                     i18n::t("app.no_adb_device"),
-                                    theme::colors::TEXT_MUTED,
+                                    theme::colors::ACCENT_AMBER,
+                                    true,
                                 );
                             }
                         },
@@ -217,15 +240,37 @@ impl eframe::App for TerminalApp {
 
         let tab_frame = eframe::egui::Frame::default()
             .fill(theme::colors::PANEL_BG)
-            .inner_margin(eframe::egui::Margin::symmetric(12, 4));
+            .inner_margin(eframe::egui::Margin::symmetric(12, 6));
         eframe::egui::TopBottomPanel::top("dashboard_tabs")
             .frame(tab_frame)
             .show_separator_line(true)
             .show(ctx, |ui| {
-                let pairs: Vec<(MainTab, &str)> =
-                    MainTab::ALL.iter().map(|tab| (*tab, tab.title())).collect();
+                let apk_q = self.inner.apk.queue_len();
+                let items: Vec<(MainTab, ui_elements::NavTabItem<'_>)> = MainTab::ALL
+                    .iter()
+                    .map(|&tab| {
+                        let (badge, busy) = match tab {
+                            MainTab::Apps => (
+                                (apk_q > 0).then(|| apk_q.to_string()),
+                                self.inner.apk.is_busy(),
+                            ),
+                            MainTab::HyperOs => (None, self.inner.hyperos.is_busy()),
+                            MainTab::Flash => (None, self.inner.flash.is_busy()),
+                            _ => (None, false),
+                        };
+                        (
+                            tab,
+                            ui_elements::NavTabItem {
+                                label: tab.title(),
+                                icon: tab.icon(),
+                                badge,
+                                busy,
+                            },
+                        )
+                    })
+                    .collect();
                 let mut current = self.tab;
-                ui_elements::folder_tab_bar(ui, &mut current, &pairs);
+                ui_elements::main_nav_bar(ui, &mut current, &items);
                 if current != self.tab {
                     self.switch_tab(current);
                 }

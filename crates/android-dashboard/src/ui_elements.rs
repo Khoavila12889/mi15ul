@@ -234,13 +234,19 @@ pub fn folder_tab_bar<T: Copy + PartialEq>(ui: &mut Ui, current: &mut T, tabs: &
         );
 
         if selected {
-            // Left, top, and right only — open bottom merges with the body.
+            // Left, top, and right only — open bottom merges with the body,
+            // with a crisp blue top highlight strip.
             let left = tab_rect.left() + 0.5;
             let right = tab_rect.right() - 0.5;
             let top = tab_rect.top() + 0.5;
             let bottom = tab_rect.bottom();
             painter.vline(left, top..=bottom, stroke);
             painter.hline(left..=right, top, stroke);
+            painter.hline(
+                (left + 2.0)..=(right - 2.0),
+                top + 1.5,
+                egui::Stroke::new(2.0, colors::ACCENT_BLUE),
+            );
             painter.vline(right, top..=bottom, stroke);
             active_x = Some(tab_rect.x_range());
         } else {
@@ -750,8 +756,8 @@ pub fn tool_card<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
     egui::Frame::default()
         .fill(colors::SURFACE_CARD)
         .stroke(egui::Stroke::new(1.0, colors::BORDER_SUBTLE))
-        .corner_radius(egui::CornerRadius::same(8))
-        .inner_margin(egui::Margin::same(10))
+        .corner_radius(egui::CornerRadius::same(10))
+        .inner_margin(egui::Margin::same(12))
         .show(ui, add)
         .inner
 }
@@ -761,21 +767,54 @@ pub fn tool_subcard<R>(ui: &mut Ui, border: Option<egui::Color32>, add: impl FnO
     egui::Frame::default()
         .fill(colors::SURFACE_SUBCARD)
         .stroke(egui::Stroke::new(1.0, border.unwrap_or(colors::BORDER_SUBTLE)))
-        .corner_radius(egui::CornerRadius::same(6))
-        .inner_margin(egui::Margin::same(8))
+        .corner_radius(egui::CornerRadius::same(8))
+        .inner_margin(egui::Margin::same(9))
         .show(ui, add)
         .inner
 }
 
+/// Smooth sine-wave breathing factor in `0.0..=1.0`, capped at ~30 FPS so pulsing
+/// never pegs the CPU. Call only when a pulsing widget is actively drawn.
+pub fn pulse_factor(ctx: &Context, period_secs: f64) -> f32 {
+    let t = ctx.input(|i| i.time);
+    let phase = 0.5 - 0.5 * (t * std::f64::consts::TAU / period_secs.max(0.2)).cos();
+    ctx.request_repaint_after(std::time::Duration::from_millis(33));
+    (phase as f32).clamp(0.0, 1.0)
+}
+
+/// Linearly interpolates two colors (RGB and alpha) with `t` clamped to `0.0..=1.0`.
+pub fn lerp_color(a: egui::Color32, b: egui::Color32, t: f32) -> egui::Color32 {
+    let t = t.clamp(0.0, 1.0);
+    let mix = |x: u8, y: u8| -> u8 { ((x as f32) + ((y as f32) - (x as f32)) * t).round() as u8 };
+    egui::Color32::from_rgba_unmultiplied(
+        mix(a.r(), b.r()),
+        mix(a.g(), b.g()),
+        mix(a.b(), b.b()),
+        mix(a.a(), b.a()),
+    )
+}
+
 /// Tinted pill badge for device status, ABI, queue items, or warnings.
 pub fn status_pill(ui: &mut Ui, text: &str, color: egui::Color32) {
-    let fill = egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 36);
-    let stroke = egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 120);
+    pulsing_status_pill(ui, text, color, false);
+}
+
+/// Status pill with an optional gentle breathing highlight when active/live.
+pub fn pulsing_status_pill(ui: &mut Ui, text: &str, color: egui::Color32, pulse: bool) {
+    let p = if pulse {
+        pulse_factor(ui.ctx(), 1.8)
+    } else {
+        0.0
+    };
+    let fill_alpha = if pulse { (28.0 + 36.0 * p) as u8 } else { 36 };
+    let stroke_alpha = if pulse { (90.0 + 130.0 * p) as u8 } else { 120 };
+    let fill = egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), fill_alpha);
+    let stroke = egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), stroke_alpha);
     egui::Frame::default()
         .fill(fill)
         .stroke(egui::Stroke::new(1.0, stroke))
         .corner_radius(egui::CornerRadius::same(12))
-        .inner_margin(egui::Margin::symmetric(8, 2))
+        .inner_margin(egui::Margin::symmetric(9, 3))
         .show(ui, |ui| {
             ui.label(egui::RichText::new(text).small().color(color).strong());
         });
@@ -791,11 +830,431 @@ pub fn section_header(ui: &mut Ui, title: &str, subtitle: &str) {
 
 /// Primary semantic CTA button (blue, green, amber, or red).
 pub fn accent_button(ui: &mut Ui, label: &str, fill: egui::Color32) -> egui::Response {
+    let stroke_color = lerp_color(fill, egui::Color32::WHITE, 0.22);
     ui.add(
         egui::Button::new(egui::RichText::new(label).color(egui::Color32::WHITE).strong())
             .fill(fill)
-            .stroke(egui::Stroke::new(1.0, fill))
-            .corner_radius(egui::CornerRadius::same(6)),
+            .stroke(egui::Stroke::new(1.0, stroke_color))
+            .corner_radius(egui::CornerRadius::same(7)),
     )
+    .on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+
+/// Semantic CTA button that gently pulses with a breathing glow halo when `pulse`
+/// is true and the widget is enabled, guiding the user to the next step.
+pub fn pulsing_cta_button(
+    ui: &mut Ui,
+    label: &str,
+    fill: egui::Color32,
+    pulse: bool,
+) -> egui::Response {
+    if !pulse || !ui.is_enabled() {
+        return accent_button(ui, label, fill);
+    }
+
+    let p = pulse_factor(ui.ctx(), 1.45);
+    let active_fill = lerp_color(fill, egui::Color32::WHITE, 0.08 + 0.16 * p);
+    let border_color = lerp_color(fill, egui::Color32::WHITE, 0.35 + 0.45 * p);
+    let response = ui
+        .add(
+            egui::Button::new(egui::RichText::new(label).color(egui::Color32::WHITE).strong())
+                .fill(active_fill)
+                .stroke(egui::Stroke::new(1.5 + 0.8 * p, border_color))
+                .corner_radius(egui::CornerRadius::same(7)),
+        )
+        .on_hover_cursor(egui::CursorIcon::PointingHand);
+
+    if ui.is_rect_visible(response.rect) {
+        let halo_alpha = (45.0 + 115.0 * p) as u8;
+        let halo_color =
+            egui::Color32::from_rgba_unmultiplied(fill.r(), fill.g(), fill.b(), halo_alpha);
+        ui.painter().rect_stroke(
+            response.rect.expand(2.0 + 3.0 * p),
+            egui::CornerRadius::same(10),
+            egui::Stroke::new(2.0, halo_color),
+            egui::StrokeKind::Outside,
+        );
+    }
+
+    response
+}
+
+/// Full-width live progress banner with spinner, breathing border, and a sleek
+/// 3px sliding highlight bar across the bottom edge while an operation is running.
+pub fn busy_banner(ui: &mut Ui, label: &str) {
+    let p = pulse_factor(ui.ctx(), 1.45);
+    let border = lerp_color(colors::ACCENT_BLUE, colors::ACCENT_CYAN, p);
+    let fill = egui::Color32::from_rgba_unmultiplied(
+        colors::ACCENT_BLUE.r(),
+        colors::ACCENT_BLUE.g(),
+        colors::ACCENT_BLUE.b(),
+        (22.0 + 18.0 * p) as u8,
+    );
+    let resp = egui::Frame::default()
+        .fill(fill)
+        .stroke(egui::Stroke::new(1.2, border))
+        .corner_radius(egui::CornerRadius::same(8))
+        .inner_margin(egui::Margin::symmetric(12, 8))
+        .show(ui, |ui| {
+            ui.set_min_width(ui.available_width());
+            ui.horizontal(|ui| {
+                ui.spinner();
+                ui.label(
+                    egui::RichText::new(label)
+                        .color(colors::OFF_WHITE)
+                        .strong(),
+                );
+            });
+            ui.add_space(3.0);
+        });
+
+    let rect = resp.response.rect;
+    if ui.is_rect_visible(rect) && rect.width() > 20.0 {
+        let track = egui::Rect::from_min_max(
+            egui::pos2(rect.left() + 8.0, rect.bottom() - 4.0),
+            egui::pos2(rect.right() - 8.0, rect.bottom() - 1.0),
+        );
+        ui.painter().rect_filled(
+            track,
+            egui::CornerRadius::same(2),
+            egui::Color32::from_rgba_unmultiplied(colors::ACCENT_BLUE.r(), colors::ACCENT_BLUE.g(), colors::ACCENT_BLUE.b(), 40),
+        );
+        let seg_w = (track.width() * 0.28).max(32.0);
+        let travel = (track.width() - seg_w).max(0.0);
+        let x0 = track.left() + travel * p;
+        let active = egui::Rect::from_min_max(
+            egui::pos2(x0, track.top()),
+            egui::pos2((x0 + seg_w).min(track.right()), track.bottom()),
+        );
+        ui.painter().rect_filled(
+            active,
+            egui::CornerRadius::same(2),
+            colors::ACCENT_CYAN,
+        );
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum StepState {
+    Done,
+    Active,
+    Next,
+    Pending,
+}
+
+pub struct StepItem<'a> {
+    pub number: u8,
+    pub title: &'a str,
+    pub subtitle: &'a str,
+    pub state: StepState,
+}
+
+/// Interactive horizontal workflow stepper with connected step cards.
+/// Highlights completed (`✓`), current, and pulsing next steps. Returns the
+/// clicked step index when any step is clicked.
+pub fn workflow_stepper(ui: &mut Ui, steps: &[StepItem<'_>]) -> Option<usize> {
+    if steps.is_empty() {
+        return None;
+    }
+    let mut clicked = None;
+    let has_next = steps.iter().any(|s| s.state == StepState::Next);
+    let p = if has_next {
+        pulse_factor(ui.ctx(), 1.45)
+    } else {
+        0.0
+    };
+
+    let avail = ui.available_width();
+    let count = steps.len() as f32;
+    let connector_w = 14.0;
+    let card_w = ((avail - connector_w * (count - 1.0)) / count).max(120.0);
+
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 0.0;
+        let mut card_centers: Vec<(egui::Rect, StepState)> = Vec::with_capacity(steps.len());
+        for (idx, step) in steps.iter().enumerate() {
+            if idx > 0 {
+                let (conn_rect, _) = ui.allocate_exact_size(
+                    egui::vec2(connector_w, 54.0),
+                    egui::Sense::hover(),
+                );
+                let line_color = if steps[idx - 1].state == StepState::Done {
+                    colors::ACCENT_GREEN
+                } else {
+                    colors::BORDER_SUBTLE
+                };
+                ui.painter().hline(
+                    (conn_rect.left() + 2.0)..=(conn_rect.right() - 2.0),
+                    conn_rect.center().y,
+                    egui::Stroke::new(2.0, line_color),
+                );
+            }
+
+            let (fill, border, badge_fill, badge_txt) = match step.state {
+                StepState::Done => (
+                    egui::Color32::from_rgba_unmultiplied(
+                        colors::ACCENT_GREEN.r(),
+                        colors::ACCENT_GREEN.g(),
+                        colors::ACCENT_GREEN.b(),
+                        24,
+                    ),
+                    colors::ACCENT_GREEN,
+                    colors::ACCENT_GREEN,
+                    "✓".to_string(),
+                ),
+                StepState::Active => (
+                    egui::Color32::from_rgba_unmultiplied(
+                        colors::ACCENT_BLUE.r(),
+                        colors::ACCENT_BLUE.g(),
+                        colors::ACCENT_BLUE.b(),
+                        44,
+                    ),
+                    colors::ACCENT_CYAN,
+                    colors::ACCENT_BLUE,
+                    step.number.to_string(),
+                ),
+                StepState::Next => (
+                    egui::Color32::from_rgba_unmultiplied(
+                        colors::ACCENT_CYAN.r(),
+                        colors::ACCENT_CYAN.g(),
+                        colors::ACCENT_CYAN.b(),
+                        (18.0 + 30.0 * p) as u8,
+                    ),
+                    lerp_color(colors::ACCENT_CYAN, colors::ACCENT_GREEN, p),
+                    colors::ACCENT_CYAN,
+                    "→".to_string(),
+                ),
+                StepState::Pending => (
+                    colors::SURFACE_SUBCARD,
+                    colors::BORDER_SUBTLE,
+                    colors::BG_WIDGET,
+                    step.number.to_string(),
+                ),
+            };
+
+            let (card_rect, resp) = ui.allocate_exact_size(
+                egui::vec2(card_w, 54.0),
+                egui::Sense::click(),
+            );
+            let resp = resp.on_hover_cursor(egui::CursorIcon::PointingHand);
+            let hovered = resp.hovered();
+            if resp.clicked() {
+                clicked = Some(idx);
+            }
+
+            let bg = if hovered && step.state != StepState::Active {
+                lerp_color(fill, colors::BG_HOVER, 0.45)
+            } else {
+                fill
+            };
+            let stroke_w = match step.state {
+                StepState::Active => 1.6,
+                StepState::Next => 1.3 + 0.7 * p,
+                _ => 1.0,
+            };
+            ui.painter()
+                .rect_filled(card_rect, egui::CornerRadius::same(8), bg);
+            ui.painter().rect_stroke(
+                card_rect,
+                egui::CornerRadius::same(8),
+                egui::Stroke::new(stroke_w, border),
+                egui::StrokeKind::Inside,
+            );
+
+            let badge_center = egui::pos2(card_rect.left() + 18.0, card_rect.center().y);
+            ui.painter().circle_filled(badge_center, 11.0, badge_fill);
+            let badge_fg = if step.state == StepState::Pending {
+                colors::TEXT_MUTED
+            } else {
+                egui::Color32::WHITE
+            };
+            ui.painter().text(
+                badge_center,
+                egui::Align2::CENTER_CENTER,
+                &badge_txt,
+                FontId::new(11.0, FontFamily::Proportional),
+                badge_fg,
+            );
+
+            let text_left = card_rect.left() + 36.0;
+            let title_color = match step.state {
+                StepState::Active | StepState::Next => colors::OFF_WHITE,
+                StepState::Done => lerp_color(colors::OFF_WHITE, colors::ACCENT_GREEN, 0.25),
+                StepState::Pending => colors::HEADER_ICON,
+            };
+            ui.painter().text(
+                egui::pos2(text_left, card_rect.top() + 17.0),
+                egui::Align2::LEFT_CENTER,
+                step.title,
+                FontId::new(theme::FONT_BODY, FontFamily::Proportional),
+                title_color,
+            );
+            ui.painter().text(
+                egui::pos2(text_left, card_rect.top() + 37.0),
+                egui::Align2::LEFT_CENTER,
+                step.subtitle,
+                FontId::new(theme::FONT_SMALL, FontFamily::Proportional),
+                colors::TEXT_MUTED,
+            );
+
+            card_centers.push((card_rect, step.state));
+        }
+        let _ = card_centers;
+    });
+    clicked
+}
+
+pub struct NavTabItem<'a> {
+    pub label: &'a str,
+    pub icon: &'a str,
+    pub badge: Option<String>,
+    pub busy: bool,
+}
+
+/// Modern horizontal pill navigation bar with active bottom highlight, optional
+/// count badges, and a pulsing dot for tabs running background tasks.
+pub fn main_nav_bar<T: Copy + PartialEq>(
+    ui: &mut Ui,
+    current: &mut T,
+    items: &[(T, NavTabItem<'_>)],
+) {
+    let any_busy = items.iter().any(|(_, it)| it.busy);
+    let p = if any_busy {
+        pulse_factor(ui.ctx(), 1.3)
+    } else {
+        0.0
+    };
+
+    ui.horizontal_wrapped(|ui| {
+        ui.spacing_mut().item_spacing.x = 6.0;
+        for (idx, (val, item)) in items.iter().enumerate() {
+            let selected = *current == *val;
+            let text = if let Some(b) = &item.badge {
+                format!("{} {} ({b})", item.icon, item.label)
+            } else {
+                format!("{} {}", item.icon, item.label)
+            };
+            let fg = if selected {
+                colors::OFF_WHITE
+            } else {
+                colors::TEXT_MUTED
+            };
+            let bg = if selected {
+                colors::BG_WIDGET
+            } else {
+                egui::Color32::TRANSPARENT
+            };
+            let border = if selected {
+                egui::Stroke::new(1.0, colors::ACCENT_BLUE)
+            } else {
+                egui::Stroke::new(1.0, egui::Color32::TRANSPARENT)
+            };
+
+            let mut rich = egui::RichText::new(text).color(fg);
+            if selected {
+                rich = rich.strong();
+            }
+
+            let resp = ui
+                .push_id(idx, |ui| {
+                    ui.add(
+                        egui::Button::new(rich)
+                            .fill(bg)
+                            .stroke(border)
+                            .corner_radius(egui::CornerRadius::same(7)),
+                    )
+                    .on_hover_cursor(egui::CursorIcon::PointingHand)
+                })
+                .inner;
+
+            if resp.clicked() {
+                *current = *val;
+            }
+            if selected {
+                ui.painter().hline(
+                    (resp.rect.left() + 8.0)..=(resp.rect.right() - 8.0),
+                    resp.rect.bottom() - 1.5,
+                    egui::Stroke::new(2.5, colors::ACCENT_CYAN),
+                );
+            }
+            if item.busy {
+                let dot_alpha = (110.0 + 145.0 * p) as u8;
+                let dot_color = egui::Color32::from_rgba_unmultiplied(
+                    colors::ACCENT_CYAN.r(),
+                    colors::ACCENT_CYAN.g(),
+                    colors::ACCENT_CYAN.b(),
+                    dot_alpha,
+                );
+                ui.painter().circle_filled(
+                    egui::pos2(resp.rect.right() - 6.0, resp.rect.top() + 6.0),
+                    3.5,
+                    dot_color,
+                );
+            }
+        }
+    });
+}
+
+/// Horizontal pill selector for secondary mode tabs inside a tool panel.
+pub fn sub_tab_pills<T: Copy + PartialEq>(ui: &mut Ui, current: &mut T, items: &[(T, &str)]) {
+    ui.horizontal_wrapped(|ui| {
+        ui.spacing_mut().item_spacing = egui::vec2(6.0, 6.0);
+        for (val, label) in items {
+            let selected = *current == *val;
+            let fill = if selected {
+                egui::Color32::from_rgba_unmultiplied(
+                    colors::ACCENT_BLUE.r(),
+                    colors::ACCENT_BLUE.g(),
+                    colors::ACCENT_BLUE.b(),
+                    52,
+                )
+            } else {
+                colors::SURFACE_SUBCARD
+            };
+            let stroke = if selected {
+                colors::ACCENT_BLUE
+            } else {
+                colors::BORDER_SUBTLE
+            };
+            let fg = if selected {
+                colors::OFF_WHITE
+            } else {
+                colors::TEXT_MUTED
+            };
+            let mut rich = egui::RichText::new(*label).color(fg);
+            if selected {
+                rich = rich.strong();
+            }
+            if ui
+                .add(
+                    egui::Button::new(rich)
+                        .fill(fill)
+                        .stroke(egui::Stroke::new(1.0, stroke))
+                        .corner_radius(egui::CornerRadius::same(14)),
+                )
+                .on_hover_cursor(egui::CursorIcon::PointingHand)
+                .clicked()
+            {
+                *current = *val;
+            }
+        }
+    });
+}
+
+/// Opens a folder in the OS file explorer (creates it first if missing).
+pub fn open_folder_in_os(dir: &std::path::Path) {
+    let _ = std::fs::create_dir_all(dir);
+    #[cfg(windows)]
+    {
+        let _ = std::process::Command::new("explorer").arg(dir).spawn();
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("open").arg(dir).spawn();
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        let _ = std::process::Command::new("xdg-open").arg(dir).spawn();
+    }
 }
 

@@ -11,44 +11,47 @@ const JETBRAINS_MONO_BOLD: &[u8] = include_bytes!("../assets/fonts/JetBrainsMono
 pub mod colors {
     use egui::Color32;
 
-    pub const BG: Color32 = Color32::from_rgb(10, 24, 52);
-    pub const BG_WIDGET: Color32 = Color32::from_rgb(18, 40, 78);
-    pub const BG_HOVER: Color32 = Color32::from_rgb(28, 56, 104);
-    pub const BG_EXTREME: Color32 = Color32::from_rgb(6, 16, 36);
-    pub const BG_FAINT: Color32 = Color32::from_rgb(16, 36, 72);
+    pub const BG: Color32 = Color32::from_rgb(13, 21, 38);
+    pub const BG_WIDGET: Color32 = Color32::from_rgb(24, 39, 68);
+    pub const BG_HOVER: Color32 = Color32::from_rgb(34, 55, 92);
+    pub const BG_EXTREME: Color32 = Color32::from_rgb(8, 13, 26);
+    pub const BG_FAINT: Color32 = Color32::from_rgb(16, 30, 56);
     /// Panel card fill.
-    pub const PANEL_BG: Color32 = Color32::from_rgb(12, 22, 40);
+    pub const PANEL_BG: Color32 = Color32::from_rgb(16, 26, 46);
     /// Thin outline around each panel card.
-    pub const PANEL_BORDER: Color32 = Color32::from_rgb(58, 64, 74);
+    pub const PANEL_BORDER: Color32 = Color32::from_rgb(48, 66, 98);
 
     /// Text and widget foreground.
-    pub const OFF_WHITE: Color32 = Color32::from_rgb(232, 232, 228);
+    pub const OFF_WHITE: Color32 = Color32::from_rgb(236, 240, 246);
     /// Panel header icons.
-    pub const HEADER_ICON: Color32 = Color32::from_rgb(176, 180, 188);
+    pub const HEADER_ICON: Color32 = Color32::from_rgb(184, 194, 210);
     /// Muted footer status text inside panel cards.
-    pub const FOOTER_TEXT: Color32 = Color32::from_rgb(140, 146, 156);
+    pub const FOOTER_TEXT: Color32 = Color32::from_rgb(142, 154, 174);
     /// Placeholder hint in empty text fields.
-    pub const PLACEHOLDER_TEXT: Color32 = Color32::from_rgb(80, 86, 96);
+    pub const PLACEHOLDER_TEXT: Color32 = Color32::from_rgb(86, 98, 118);
     /// Resize handle highlight (gap stays empty when idle).
-    pub const PANEL_SPLITTER_HOVER: Color32 = Color32::from_rgb(96, 102, 112);
+    pub const PANEL_SPLITTER_HOVER: Color32 = Color32::from_rgb(96, 116, 148);
     /// Header rule inside a panel card.
-    pub const PANEL_SEPARATOR: Color32 = Color32::from_rgb(56, 62, 72);
+    pub const PANEL_SEPARATOR: Color32 = Color32::from_rgb(42, 58, 86);
     /// Selected icon toggle / device list fill.
-    pub const SELECTION: Color32 = Color32::from_rgb(72, 78, 88);
+    pub const SELECTION: Color32 = Color32::from_rgb(38, 58, 92);
 
     /// Elevated card surfaces & subtle borders for tool windows.
-    pub const SURFACE_CARD: Color32 = Color32::from_rgb(14, 28, 52);
-    pub const SURFACE_SUBCARD: Color32 = Color32::from_rgb(9, 19, 38);
-    pub const BORDER_SUBTLE: Color32 = Color32::from_rgb(42, 64, 96);
+    pub const SURFACE_CARD: Color32 = Color32::from_rgb(19, 31, 54);
+    pub const SURFACE_SUBCARD: Color32 = Color32::from_rgb(12, 21, 39);
+    pub const BORDER_SUBTLE: Color32 = Color32::from_rgb(40, 58, 88);
     pub const TEXT_MUTED: Color32 = Color32::from_rgb(148, 163, 184);
 
     /// Semantic accent colors for action buttons & status pills.
-    pub const ACCENT_BLUE: Color32 = Color32::from_rgb(45, 125, 230);
-    pub const ACCENT_GREEN: Color32 = Color32::from_rgb(38, 152, 72);
-    pub const ACCENT_AMBER: Color32 = Color32::from_rgb(218, 158, 36);
-    pub const ACCENT_RED: Color32 = Color32::from_rgb(208, 56, 56);
+    pub const ACCENT_BLUE: Color32 = Color32::from_rgb(56, 139, 253);
+    pub const ACCENT_CYAN: Color32 = Color32::from_rgb(34, 211, 238);
+    pub const ACCENT_GREEN: Color32 = Color32::from_rgb(34, 181, 115);
+    pub const ACCENT_AMBER: Color32 = Color32::from_rgb(245, 166, 35);
+    pub const ACCENT_RED: Color32 = Color32::from_rgb(235, 77, 75);
+    #[allow(dead_code)]
+    pub const ACCENT_PURPLE: Color32 = Color32::from_rgb(148, 108, 255);
 
-    pub const ERROR: Color32 = Color32::from_rgb(220, 80, 80);
+    pub const ERROR: Color32 = Color32::from_rgb(235, 92, 92);
     pub const LOG_ERROR: Color32 = ERROR;
     pub const LOG_WARNING: Color32 = Color32::from_rgb(220, 180, 60);
     pub const LOG_INFO: Color32 = Color32::from_rgb(120, 180, 255);
@@ -207,8 +210,8 @@ pub fn configure(ctx: &Context) {
 fn apply_shared_style(style: &mut egui::Style) {
     style.spacing.window_margin = egui::Margin::same(PANEL_INNER_PADDING);
     style.spacing.menu_margin = egui::Margin::same(MENU_MARGIN);
-    style.spacing.item_spacing = egui::vec2(ITEM_SPACING_X, ITEM_SPACING_Y);
-    style.spacing.button_padding = egui::vec2(10.0, 5.0);
+    style.spacing.item_spacing = egui::vec2(ITEM_SPACING_X, 7.0);
+    style.spacing.button_padding = egui::vec2(12.0, 6.0);
     style.spacing.indent = 16.0;
 
     let bold = FontFamily::Name("jetbrains_mono_bold".into());
@@ -254,25 +257,25 @@ fn dark_blue_visuals() -> egui::Visuals {
     visuals.widgets.inactive.bg_fill = colors::BG_WIDGET;
     visuals.widgets.inactive.weak_bg_fill = colors::BG_WIDGET;
     visuals.widgets.inactive.fg_stroke.color = colors::OFF_WHITE;
-    visuals.widgets.inactive.corner_radius = egui::CornerRadius::same(6);
+    visuals.widgets.inactive.corner_radius = egui::CornerRadius::same(7);
     visuals.widgets.inactive.bg_stroke = egui::Stroke::new(1.0, colors::BORDER_SUBTLE);
 
     visuals.widgets.hovered.bg_fill = colors::BG_HOVER;
     visuals.widgets.hovered.weak_bg_fill = colors::BG_HOVER;
     visuals.widgets.hovered.fg_stroke.color = colors::OFF_WHITE;
-    visuals.widgets.hovered.corner_radius = egui::CornerRadius::same(6);
+    visuals.widgets.hovered.corner_radius = egui::CornerRadius::same(7);
     visuals.widgets.hovered.bg_stroke = egui::Stroke::new(1.0, colors::ACCENT_BLUE);
 
     visuals.widgets.active.bg_fill = colors::BG_HOVER;
     visuals.widgets.active.weak_bg_fill = colors::BG_HOVER;
     visuals.widgets.active.fg_stroke.color = colors::OFF_WHITE;
-    visuals.widgets.active.corner_radius = egui::CornerRadius::same(6);
+    visuals.widgets.active.corner_radius = egui::CornerRadius::same(7);
     visuals.widgets.active.bg_stroke = egui::Stroke::new(1.0, colors::ACCENT_BLUE);
 
     visuals.widgets.open.bg_fill = colors::BG_WIDGET;
     visuals.widgets.open.weak_bg_fill = colors::BG_WIDGET;
     visuals.widgets.open.fg_stroke.color = colors::OFF_WHITE;
-    visuals.widgets.open.corner_radius = egui::CornerRadius::same(6);
+    visuals.widgets.open.corner_radius = egui::CornerRadius::same(7);
     visuals.widgets.open.bg_stroke = egui::Stroke::new(1.0, colors::BORDER_SUBTLE);
 
     visuals

@@ -1,0 +1,24 @@
+[default]
+author = ""
+designer = ""
+version = "1.0"
+ui_version = 17
+editor_version = "1.6.5"
+miui_adapter_version = "3.3"
+resource_type = "theme"
+is_third_parties = false
+
+[themes.MTZOS4]
+title = "MTZVN"
+
+[themes.MTZOS4_kinhlong]
+title = "MTZVN Kính Lỏng"
+
+[themes.MTZOS4_leica_vibrant]
+title = "Xiaomi 17 Ultra Leica Vibrant VH"
+
+[themes.MTZOS4_fold]
+title = "MTZVN Máy Gập"
+
+[themes.MTZOS4_fold_kinhlong]
+title = "MTZVN Máy Gập Kính Lỏng"

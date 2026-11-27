@@ -54,4 +54,16 @@ impl MainTab {
             MainTab::Tools => i18n::t("tab.tools"),
         }
     }
+
+    /// Ký hiệu tương thích hoàn toàn với JetBrainsMonoNerdFont (tránh emoji ô vuông).
+    pub fn icon(self) -> &'static str {
+        match self {
+            MainTab::Overview => "◆",
+            MainTab::Logs => "▸",
+            MainTab::Apps => "▪",
+            MainTab::HyperOs => "★",
+            MainTab::Flash => "▶",
+            MainTab::Tools => "≡",
+        }
+    }
 }

@@ -10,12 +10,12 @@
     "updatedTime": 0,
     "version": "1",
     "authors": {
-      "zh_CN": "Truong Nguyen",
-      "fallback": "Truong Nguyen"
+      "zh_CN": "",
+      "fallback": ""
     },
     "designers": {
-      "zh_CN": "Truong Nguyen",
-      "fallback": "Truong Nguyen"
+      "zh_CN": "",
+      "fallback": ""
     },
     "titles": {
       "zh_CN": "Xiaomi Theme VN",
@@ -57,6 +57,7 @@
     "price": -1,
     "isBackupVersion": false,
     "themeType": 0,
+    "isThirdParties": false,
     "miuiAdapterVersion": null
   },
   "component": {
@@ -70,12 +71,12 @@
     "updatedTime": 0,
     "version": "1",
     "authors": {
-      "fallback": "Truong Nguyen",
-      "zh_CN": "Truong Nguyen"
+      "fallback": "",
+      "zh_CN": ""
     },
     "designers": {
-      "fallback": "Truong Nguyen",
-      "zh_CN": "Truong Nguyen"
+      "fallback": "",
+      "zh_CN": ""
     },
     "titles": {
       "fallback": "Xiaomi Theme VN",
@@ -111,6 +112,7 @@
     "price": -1,
     "isBackUpVersion": false,
     "themeType": 0,
+    "isThirdParties": false,
     "miuiAdapterVersion": "4.0"
   },
   "launcher": {
@@ -124,12 +126,12 @@
     "updatedTime": 0,
     "version": "1",
     "authors": {
-      "fallback": "Truong Nguyen",
-      "zh_CN": "Truong Nguyen"
+      "fallback": "",
+      "zh_CN": ""
     },
     "designers": {
-      "fallback": "Truong Nguyen",
-      "zh_CN": "Truong Nguyen"
+      "fallback": "",
+      "zh_CN": ""
     },
     "titles": {
       "fallback": "Xiaomi Theme VN",
@@ -169,6 +171,7 @@
     "price": -1,
     "isBackUpVersion": false,
     "themeType": 0,
+    "isThirdParties": false,
     "miuiAdapterVersion": "4.0"
   }
 }

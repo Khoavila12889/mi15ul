@@ -450,12 +450,18 @@ impl AppCleanup {
             ));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let can_uninstall = !self.busy && serial.is_some() && !self.selected.is_empty();
-                let button = egui::Button::new(
-                    egui::RichText::new(i18n::t("cleanup.uninstall_selected"))
-                        .color(colors::OFF_WHITE),
-                )
-                .fill(colors::ERROR);
-                if ui.add_enabled(can_uninstall, button).clicked() {
+                if ui
+                    .add_enabled_ui(can_uninstall, |ui| {
+                        ui_elements::pulsing_cta_button(
+                            ui,
+                            i18n::t("cleanup.uninstall_selected"),
+                            colors::ACCENT_RED,
+                            can_uninstall,
+                        )
+                    })
+                    .inner
+                    .clicked()
+                {
                     let mut packages: Vec<String> = self.selected.iter().cloned().collect();
                     packages.sort();
                     packages.retain(|package| !is_protected(package) && !self.active_protected.contains(package));
@@ -483,14 +489,8 @@ impl AppCleanup {
             ui.label(egui::RichText::new(&status.text).small().color(color));
         }
         if self.busy {
-            ui.horizontal(|ui| {
-                ui.spinner();
-                ui.label(
-                    egui::RichText::new(i18n::t("cleanup.running_adb"))
-                        .small()
-                        .color(colors::FOOTER_TEXT),
-                );
-            });
+            ui.add_space(theme::ITEM_SPACING_Y);
+            ui_elements::busy_banner(ui, i18n::t("cleanup.running_adb"));
         }
     }
 
@@ -605,12 +605,18 @@ impl AppCleanup {
             // "Uninstall selected…" button was). This prevents a double-click
             // from selecting a package and confirming removal in one gesture.
             let can_run = !self.busy && serial.is_some();
-            let button = egui::Button::new(
-                egui::RichText::new(i18n::tf("cleanup.confirm_btn", &[("count", &count_s)]))
-                    .color(colors::OFF_WHITE),
-            )
-            .fill(colors::ERROR);
-            if ui.add_enabled(can_run, button).clicked() {
+            if ui
+                .add_enabled_ui(can_run, |ui| {
+                    ui_elements::pulsing_cta_button(
+                        ui,
+                        &i18n::tf("cleanup.confirm_btn", &[("count", &count_s)]),
+                        colors::ACCENT_RED,
+                        can_run,
+                    )
+                })
+                .inner
+                .clicked()
+            {
                 if let Some(serial) = serial {
                     self.start_batch(
                         serial.to_string(),

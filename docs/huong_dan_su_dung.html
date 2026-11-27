@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<title>Hướng Dẫn Sử Dụng Android Dashboard (HyperOS &amp; Flash ROM)</title>
+<style>
+  @page {
+    size: A4;
+    margin: 13mm 14mm 14mm 14mm;
+  }
+
+  * {
+    box-sizing: border-box;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  body {
+    margin: 0;
+    font-family: "Segoe UI", "Roboto", "Arial", sans-serif;
+    font-size: 10.2pt;
+    line-height: 1.5;
+    color: #1e293b;
+    background: #ffffff;
+  }
+
+  .hero {
+    background: linear-gradient(135deg, #0b162c 0%, #162a52 60%, #1d4ed8 100%);
+    color: #f8fafc;
+    border-radius: 10px;
+    padding: 18px 22px;
+    margin-bottom: 14px;
+    border-bottom: 3px solid #22d3ee;
+  }
+
+  .hero .kicker {
+    font-size: 8.5pt;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #67e8f9;
+    margin-bottom: 4px;
+  }
+
+  .hero h1 {
+    margin: 0 0 6px 0;
+    font-size: 18pt;
+    font-weight: 700;
+    color: #ffffff;
+  }
+
+  .hero p {
+    margin: 0;
+    font-size: 9.8pt;
+    color: #dbeafe;
+  }
+
+  .badge-row {
+    margin-top: 10px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .badge {
+    display: inline-block;
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-size: 8.3pt;
+    font-weight: 600;
+    background: rgba(255, 255, 255, 0.14);
+    border: 1px solid rgba(103, 232, 249, 0.45);
+    color: #f0f9ff;
+  }
+
+  h2 {
+    margin: 14px 0 7px 0;
+    font-size: 12.5pt;
+    color: #0f2554;
+    border-left: 4px solid #2563eb;
+    padding-left: 9px;
+    page-break-after: avoid;
+    break-after: avoid;
+  }
+
+  h3 {
+    margin: 9px 0 4px 0;
+    font-size: 10.6pt;
+    color: #1e3a8a;
+    page-break-after: avoid;
+    break-after: avoid;
+  }
+
+  p {
+    margin: 4px 0 7px 0;
+  }
+
+  ul, ol {
+    margin: 4px 0 8px 0;
+    padding-left: 19px;
+  }
+
+  li {
+    margin-bottom: 3px;
+  }
+
+  code {
+    font-family: "Consolas", "Cascadia Mono", monospace;
+    font-size: 9pt;
+    background: #eff6ff;
+    color: #1e3a8a;
+    padding: 1px 5px;
+    border-radius: 4px;
+    border: 1px solid #dbeafe;
+  }
+
+  .card {
+    background: #f8fafc;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 10px 13px;
+    margin-bottom: 9px;
+    break-inside: avoid;
+  }
+
+  .card-title {
+    font-weight: 700;
+    font-size: 10.4pt;
+    color: #0f172a;
+    margin-bottom: 4px;
+  }
+
+  .callout {
+    border-radius: 8px;
+    padding: 9px 12px;
+    margin: 8px 0 10px 0;
+    break-inside: avoid;
+  }
+
+  .callout-warn {
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-left: 4px solid #dc2626;
+    color: #7f1d1d;
+  }
+
+  .callout-ok {
+    background: #ecfdf5;
+    border: 1px solid #a7f3d0;
+    border-left: 4px solid #059669;
+    color: #064e3b;
+  }
+
+  .callout-info {
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-left: 4px solid #2563eb;
+    color: #1e3a8a;
+  }
+
+  .callout strong.title {
+    display: block;
+    margin-bottom: 3px;
+    font-size: 10pt;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 6px 0 10px 0;
+    font-size: 9.4pt;
+  }
+
+  th, td {
+    border: 1px solid #cbd5e1;
+    padding: 6px 8px;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  th {
+    background: #0f2554;
+    color: #ffffff;
+    font-weight: 600;
+  }
+
+  tr:nth-child(even) td {
+    background: #f8fafc;
+  }
+
+  .step-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+
+  .step-box {
+    border: 1px solid #cbd5e1;
+    border-top: 3px solid #2563eb;
+    border-radius: 8px;
+    padding: 9px 11px;
+    background: #f8fafc;
+    break-inside: avoid;
+  }
+
+  .step-box.green { border-top-color: #10b981; }
+  .step-box.amber { border-top-color: #f59e0b; }
+  .step-box.red   { border-top-color: #ef4444; }
+
+  .step-num {
+    display: inline-block;
+    background: #1d4ed8;
+    color: #ffffff;
+    font-size: 8.2pt;
+    font-weight: 700;
+    border-radius: 4px;
+    padding: 1px 6px;
+    margin-right: 5px;
+  }
+
+  .step-box.green .step-num { background: #059669; }
+  .step-box.amber .step-num { background: #d97706; }
+  .step-box.red .step-num   { background: #dc2626; }
+
+  .footer-note {
+    margin-top: 12px;
+    padding-top: 8px;
+    border-top: 1px solid #cbd5e1;
+    font-size: 8.6pt;
+    color: #64748b;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="kicker">Tài liệu hướng dẫn sử dụng · Phiên bản UI Tabs &amp; Audit Log</div>
+  <h1>Android Dashboard — Quản lý, Tối ưu HyperOS China &amp; Flash ROM</h1>
+  <p>Công cụ PC chạy 100% qua ADB / Fastboot — không cài APK lạ hay tiến trình chạy nền lên điện thoại, giữ môi trường sạch chuẩn an toàn cho App Ngân hàng &amp; VNeID.</p>
+  <div class="badge-row">
+    <span class="badge">◆ Giao diện 6 Tab một cửa sổ</span>
+    <span class="badge">★ Tối ưu HyperOS 4 bước dẫn đường</span>
+    <span class="badge">▶ Flash ROM Gốc &amp; Khóa Bootloader</span>
+    <span class="badge">✓ Audit Log tự động theo Serial</span>
+  </div>
+</div>
+
+<h2>1. Yêu cầu chuẩn bị &amp; Kết nối điện thoại</h2>
+<div class="card">
+  <ol>
+    <li><strong>Giữ nguyên cấu trúc thư mục chạy tool:</strong> Đặt <code>android-dashboard.exe</code> cạnh thư mục <code>themes/</code> (gồm <code>metadata_template.json</code> và 5 gói Theme Việt hóa <code>.mtz</code>).</li>
+    <li><strong>Bật kết nối ADB trên điện thoại:</strong> Vào <em>Cài đặt → Thiết bị của tôi / Giới thiệu điện thoại</em> bấm nhiều lần vào <em>Phiên bản OS / MIUI</em> để mở <em>Tùy chọn nhà phát triển</em> → bật <strong>Gỡ lỗi USB (USB Debugging)</strong>.
+      <ul>
+        <li>Nếu muốn cài APK hoặc gỡ/sửa thiết lập sâu trên Xiaomi/HyperOS, bật thêm <strong>Cài đặt qua USB</strong> và <strong>Gỡ lỗi USB (Cài đặt bảo mật)</strong>.</li>
+      </ul>
+    </li>
+    <li><strong>Cắm cáp USB &amp; xác nhận RSA:</strong> Khi điện thoại hiện hộp thoại <em>Cho phép gỡ lỗi USB</em>, chọn <em>Luôn cho phép từ máy tính này</em> → bấm <strong>OK</strong>.</li>
+    <li><strong>Nhận biết tín hiệu trực quan trên giao diện mới:</strong>
+      <ul>
+        <li><strong>Nút viền nhấp nháy:</strong> Gợi ý đúng thao tác <em>bước tiếp theo</em> nên bấm (ví dụ: <code>Làm mới thiết bị</code> → <code>Quét</code> → <code>Áp dụng</code> → <code>Tiếp theo →</code>).</li>
+        <li><strong>Thanh tiến trình trượt ngang + spinner:</strong> Cho biết tác vụ ADB/Fastboot đang chạy nền; không rút cáp trong lúc thanh này đang hoạt động.</li>
+        <li><strong>Chấm xanh trên tên tab chính:</strong> Báo tab đó đang có tác vụ chạy ngầm (ví dụ đang cài APK hoặc đang flash ROM).</li>
+      </ul>
+    </li>
+  </ol>
+</div>
+
+<h2>2. Tổng quan 6 Tab chính</h2>
+<table>
+  <thead>
+    <tr>
+      <th style="width: 19%;">Tab</th>
+      <th style="width: 44%;">Chức năng chính</th>
+      <th style="width: 37%;">Khi nào dùng</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>◆ Tổng quan</strong></td>
+      <td>Theo dõi RAM, Bộ nhớ, Lưu lượng mạng, Lưu lượng từng app, danh sách thiết bị.</td>
+      <td>Kiểm tra tài nguyên máy theo thời gian thực.</td>
+    </tr>
+    <tr>
+      <td><strong>▸ Log &amp; Lỗi</strong></td>
+      <td>Xem Logcat trực tiếp, lọc tag, tách riêng tab Lỗi / Crash-ANR và Phân tích AI.</td>
+      <td>Bắt lỗi app văng, kiểm tra nguyên nhân lỗi hệ thống.</td>
+    </tr>
+    <tr>
+      <td><strong>▪ Ứng dụng</strong></td>
+      <td>Gỡ/đóng băng ứng dụng sâu + Kéo thả cài hàng loạt <code>.apk/.apks/.xapk/.apkm</code>.</td>
+      <td>Cài CH Play, Zalo, App Bank hoặc dọn app không cần.</td>
+    </tr>
+    <tr>
+      <td><strong>★ HyperOS</strong></td>
+      <td>Quy trình 4 bước chuẩn cho máy Xiaomi/HyperOS nội địa Trung Quốc về ROM gốc.</td>
+      <td>Fix chậm thông báo, Việt hóa, gỡ app rác TQ, khóa Bank-Ready.</td>
+    </tr>
+    <tr>
+      <td><strong>▶ Flash &amp; Khóa</strong></td>
+      <td>Flash ROM gốc Fastboot (<code>flash_all_lock</code>/<code>flash_all</code>), Manifest JSON, Sideload.</td>
+      <td>Đưa máy Custom về ROM gốc &amp; khóa lại Bootloader.</td>
+    </tr>
+    <tr>
+      <td><strong>≡ Công cụ</strong></td>
+      <td>Dọn rác Zalo, chiếu màn hình <code>scrcpy</code>, xuất báo cáo lỗi &amp; Truyền tệp PC↔ĐT.</td>
+      <td>Giải phóng dung lượng Zalo, điều khiển màn hình trên PC.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>3. Quy trình 4 bước trên Tab HyperOS (Máy nội địa China — Bank &amp; VNeID Ready)</h2>
+<div class="step-grid">
+  <div class="step-box">
+    <div class="card-title"><span class="step-num">Bước 1</span>Fix Thông báo chậm (FCM &amp; MILLET)</div>
+    <ul>
+      <li>Bấm <strong>Quét app trên máy</strong> để liệt kê Google GMS, VNeID, Zalo, App Ngân hàng đã cài.</li>
+      <li>Tick chọn các app cần nhận thông báo tức thì (hoặc nhập thêm tên gói) → bấm <strong>Áp dụng Fix Thông báo</strong>.</li>
+      <li>Công cụ ghi vào <code>MILLET_NO_RESTRICT_APP</code>, mở Doze whitelist &amp; <code>RUN_ANY_IN_BACKGROUND allow</code>.</li>
+      <li>Xong bước 1, bấm nút nhấp nháy <strong>Tiếp theo: 2. Việt hóa &amp; Theme MTZ →</strong>.</li>
+    </ul>
+  </div>
+
+  <div class="step-box green">
+    <div class="card-title"><span class="step-num">Bước 2</span>Việt hóa (vi-VN) &amp; Nạp Theme MTZ</div>
+    <ul>
+      <li>Bấm <strong>Sao lưu &amp; Bật Tiếng Việt (vi-VN)</strong> để đổi <code>system_locales</code> (tự lưu bản gốc để khôi phục khi cần).</li>
+      <li>Chọn 1 trong 5 gói Theme Việt hóa sẵn trong <code>themes/</code> (<code>MTZOS4.mtz</code>, <code>leica_vibrant</code>, <code>kinhlong</code>…) hoặc chọn file <code>.mtz</code> ngoài.</li>
+      <li>Bấm <strong>Nạp Theme lên máy &amp; Mở màn hình Áp dụng</strong> → trên điện thoại tự bấm <strong>Áp dụng (Apply)</strong> thủ công.</li>
+    </ul>
+  </div>
+
+  <div class="step-box amber">
+    <div class="card-title"><span class="step-num">Bước 3</span>Gỡ App rác TQ (Safe Debloat đa tầng)</div>
+    <ul>
+      <li>Chọn chế độ <strong>Tự động gỡ sâu đa tầng</strong> (hoặc <em>Chỉ tắt / đóng băng</em>), bấm <strong>Quét App rác trên máy</strong>.</li>
+      <li>Tool tự bảo vệ Bàn phím đang dùng, Launcher chính &amp; <code>Find Device</code> chống bootloop.</li>
+      <li>Bấm <strong>Chọn gói An toàn đang cài</strong> → <strong>Thực hiện</strong> → <strong>Xác nhận</strong> (nút đỏ nhấp nháy). Có nút <strong>Khôi phục</strong> nếu cần bật lại.</li>
+    </ul>
+  </div>
+
+  <div class="step-box red">
+    <div class="card-title"><span class="step-num">Bước 4</span>Khóa Bảo mật (Bank &amp; VNeID Ready)</div>
+    <ul>
+      <li>Kiểm tra 2 thẻ <em>Developer Options</em> và <em>USB Debugging</em>.</li>
+      <li>Bấm <strong>Hoàn tất &amp; Khóa bảo mật (Tắt Dev + ADB)</strong> → bấm <strong>Xác nhận</strong>.</li>
+      <li>Lệnh tắt cả Dev Options và USB Debugging chạy đồng thời → rút cáp USB và mở ngay VNeID / App Ngân hàng.</li>
+    </ul>
+  </div>
+</div>
+
+<h2>4. Quy trình Flash ROM Gốc &amp; Khóa Bootloader (Ví dụ Xiaomi 15 Ultra — <code>xuanyuan</code>)</h2>
+
+<div class="callout callout-ok">
+  <strong class="title">Hỏi đáp nhanh: Đã đăng xuất tài khoản Mi &amp; Google thì có cần "Đặt lại cài đặt gốc" trước khi flash không?</strong>
+  <strong>KHÔNG CẦN</strong> phải tự bấm Đặt lại cài đặt gốc trên điện thoại trước khi flash, vì kịch bản <code>flash_all_lock.bat</code> (và <code>flash_all.bat</code>) khi chạy sẽ tự động xóa sạch hoàn toàn phân vùng <code>metadata</code> và <code>userdata</code>.<br>
+  <strong>TUY NHIÊN, BẮT BUỘC làm đủ 4 việc sau trước khi tắt nguồn vào Fastboot để KHÔNG bị dính khóa FRP Android 15/17:</strong>
+  <ol style="margin-bottom: 2px;">
+    <li>Vào <em>Cài đặt → Vân tay, dữ liệu khuôn mặt &amp; khóa màn hình</em>: xóa hết vân tay/khuôn mặt và tắt <strong>Khóa màn hình về "Không có"</strong>.</li>
+    <li>Vào <em>Cài đặt → Tài khoản &amp; đồng bộ → Google</em>: kiểm tra chắc chắn đã gỡ sạch <strong>100% tài khoản Google</strong>.</li>
+    <li>Vào <em>Tài khoản Xiaomi (Mi Account)</em>: tắt <strong>Tìm thiết bị (Find Device)</strong> và đăng xuất hoàn toàn.</li>
+    <li><strong>Khởi động lại (Reboot) điện thoại 1 lần</strong> vào màn hình chính để Android ghi nhận trạng thái sạch xuống phân vùng bảo mật <code>frp</code>, sau đó mới tắt nguồn vào Fastboot.</li>
+  </ol>
+</div>
+
+<div class="callout callout-warn">
+  <strong class="title">⚠ Quy tắc sống còn khi khóa Bootloader (Tránh Brick máy)</strong>
+  <ul>
+    <li>Chỉ chọn chế độ <strong>Xóa sạch &amp; Khóa Bootloader (<code>flash_all_lock</code>)</strong> khi máy đúng vùng phần cứng khớp với ROM (ví dụ: Xiaomi 15 Ultra nội địa China <code>25010PN30C</code> dùng ROM China <code>*CNXM</code>).</li>
+    <li><strong>Tuyệt đối KHÔNG khóa Bootloader</strong> khi đang nạp ROM Global/EU lên máy China (hoặc ngược lại) hay khi máy đang dùng ROM Custom/đã sửa phân vùng hệ thống.</li>
+    <li>Điện thoại phải ở chế độ <strong>Bootloader (FASTBOOT)</strong> — giữ <code>Giảm âm lượng (Vol -) + Nguồn</code>, không phải <code>fastbootd</code>.</li>
+  </ul>
+</div>
+
+<div class="card">
+  <div class="card-title">Các bước thực hiện trên Tab "▶ Flash &amp; Khóa"</div>
+  <ol>
+    <li><strong>Chọn đúng tab con:</strong> Bấm tab con thứ 5 là <strong><code>ROM Gốc &amp; Khóa Bootloader</code></strong> (<em>không chọn tab "ROM đầy đủ (Manifest)"</em> vì ROM gốc Xiaomi dùng script <code>.bat</code>, không dùng file <code>.json</code>).</li>
+    <li><strong>Chọn thư mục ROM đã giải nén:</strong> Bấm <strong>Duyệt…</strong> (hoặc kéo thả thẳng thư mục vào cửa sổ app), trỏ tới thư mục gốc chứa <code>flash_all_lock.bat</code> và <code>images\</code> (ví dụ <code>D:\mi15ul\xuanyuan_images_OS4.0.4.0.XOACNXM_17.0</code>).</li>
+    <li><strong>Kiểm tra tương thích:</strong> Bấm <strong>Làm mới thiết bị</strong> ở chế độ Fastboot, rồi bấm <strong>Kiểm tra ROM Gốc &amp; Tương thích</strong>. Xác nhận 3 thông số báo xanh: đúng <code>product</code> (vd <code>xuanyuan</code>), Anti-Rollback (<code>ARB</code>) đạt, và máy đang <code>Unlocked</code>.</li>
+    <li><strong>Chọn chế độ &amp; Chạy:</strong> Chọn <code>flash_all_lock</code> (nếu khóa Bootloader) hoặc <code>flash_all</code> (giữ mở khóa) → tick ô xác nhận → gõ <code>LOCK</code> (hoặc <code>FLASH</code>) → bấm nút <strong>Bắt đầu Flash ROM Gốc…</strong> đang nhấp nháy. Chờ thanh tiến trình chạy hết 100% và máy tự khởi động lại.</li>
+  </ol>
+  <p style="margin-bottom:0;"><strong>Các tab con khác:</strong> <em>Phân vùng lẻ / Boot tạm</em> (flash riêng <code>boot/init_boot/vbmeta</code> hoặc test <code>fastboot boot</code> không ghi ổ cứng), <em>ADB Sideload</em> (nạp file OTA <code>.zip</code> từ Recovery), <em>Tạo Manifest</em> (đóng gói <code>manifest.json</code> kèm mã kiểm tra SHA-256).</p>
+</div>
+
+<h2>5. Tab Ứng dụng &amp; Tab Công cụ</h2>
+<div class="card">
+  <ul>
+    <li><strong>Dọn ứng dụng (Tab Ứng dụng):</strong> Tìm theo tên gói, lọc app hệ thống/người dùng, tích hợp bảo vệ gói lõi/Launcher/bàn phím đang bật và danh sách khôi phục nhanh trong phiên.</li>
+    <li><strong>Cài APK / Bundle hàng loạt (Tab Ứng dụng):</strong> Kéo thả thẳng file <code>.apk</code>, <code>.apks</code>, <code>.xapk</code>, <code>.apkm</code> hoặc cả thư mục vào cửa sổ ứng dụng. Công cụ tự lọc đúng ABI chip máy khi cài split APK và báo cảnh báo nếu HyperOS chưa bật <em>Install via USB</em>.</li>
+    <li><strong>Dọn rác Zalo, Chiếu màn hình &amp; Truyền tệp (Tab Công cụ):</strong> Xem dung lượng rác Zalo trước khi xóa an toàn theo mốc thời gian; mở <code>scrcpy</code> điều khiển điện thoại trên PC; sao lưu/chuyển file hai chiều PC ↔ Điện thoại.</li>
+  </ul>
+</div>
+
+<h2>6. Nhật ký kiểm toán (Audit Log) &amp; Khắc phục lỗi thường gặp</h2>
+<div class="card">
+  <p><strong>Nhật ký kiểm toán theo từng máy:</strong> Mọi hành động thay đổi điện thoại (debloat, khôi phục, Việt hóa, nạp Theme, khóa Dev/ADB, Flash ROM, khóa Bootloader, dọn Zalo) đều được ghi thành từng dòng JSONL tại <code>%LOCALAPPDATA%\android-dashboard\audit\audit-&lt;serial&gt;.jsonl</code>. Bấm nút <strong>Audit Log</strong> ở góc trên bên phải hoặc <strong>Mở thư mục Audit</strong> trong tab HyperOS để kiểm tra/lưu hồ sơ.</p>
+  <table style="margin-bottom: 2px;">
+    <thead>
+      <tr>
+        <th style="width: 30%;">Tình huống / Thông báo lỗi</th>
+        <th style="width: 70%;">Nguyên nhân &amp; Cách xử lý nhanh</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Thiết bị báo <code>chưa cấp quyền</code> (unauthorized)</td>
+        <td>Mở khóa màn hình điện thoại và bấm <strong>Cho phép gỡ lỗi USB</strong> trên pop-up.</td>
+      </tr>
+      <tr>
+        <td>Không cài được APK trên Xiaomi/HyperOS</td>
+        <td>Vào <em>Tùy chọn nhà phát triển</em> → bật <strong>Cài đặt qua USB</strong> (<code>Install via USB</code>).</td>
+      </tr>
+      <tr>
+        <td>Không tạo được Khóa màn hình / Vân tay (lỗi <code>FRP active</code>)</td>
+        <td>Máy còn khóa FRP từ ROM cũ trước khi flash. Đăng nhập đúng tài khoản Google đã từng gắn trên máy trước đó để Google tự tắt cờ FRP (lưu ý: nếu vừa đổi mật khẩu Google, cần đợi đủ <strong>24 giờ</strong>).</td>
+      </tr>
+      <tr>
+        <td>Tài khoản công ty (Workspace) báo <code>Quyền truy cập bị hạn chế</code></td>
+        <td>Chính sách công ty bắt buộc đặt PIN/Mật khẩu màn hình (<code>DM_SCREENLOCK_REQUIRED</code>). Hãy đặt khóa màn hình cho máy rồi chạm lại thông báo đồng bộ.</td>
+      </tr>
+      <tr>
+        <td>Khi đăng nhập Gmail mới bị hỏi khóa màn hình thiết bị cũ</td>
+        <td>Đó là bước mở khóa Passkey cũ (không phải mật khẩu Gmail). Có thể bấm <strong>BỎ QUA</strong> ở góc dưới trái để tiếp tục đăng nhập bình thường.</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="footer-note">
+  Android Dashboard · Tài liệu hướng dẫn người dùng (Nhánh ui-tabs + Audit Log) · Tạo ngày 26/11/2026
+</div>
+
+</body>
+</html>

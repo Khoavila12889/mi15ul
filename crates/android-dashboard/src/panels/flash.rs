@@ -748,27 +748,31 @@ impl FlashDialog {
     }
 
     fn render_live_progress_block(&self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        ui.horizontal(|ui| {
-            if self.is_flashing {
-                ui.spinner();
-                let secs = format!(
-                    "{:.0}",
-                    self.started
-                        .map(|s| s.elapsed().as_secs_f64())
-                        .unwrap_or_default()
-                );
-                ui.label(i18n::tf("flash.prog_running", &[("secs", &secs)]));
-            }
-            if let Some(pct) = self.progress_percent {
-                ui.add(
-                    egui::ProgressBar::new((pct / 100.0).clamp(0.0, 1.0))
-                        .show_percentage()
-                        .animate(self.is_flashing),
-                );
-            }
-        });
-        if !self.progress_label.is_empty() && self.is_flashing {
-            ui.small(&self.progress_label);
+        if self.is_flashing {
+            let secs = format!(
+                "{:.0}",
+                self.started
+                    .map(|s| s.elapsed().as_secs_f64())
+                    .unwrap_or_default()
+            );
+            let banner_text = if self.progress_label.is_empty() {
+                i18n::tf("flash.prog_running", &[("secs", &secs)])
+            } else {
+                format!(
+                    "{} — {}",
+                    i18n::tf("flash.prog_running", &[("secs", &secs)]),
+                    self.progress_label
+                )
+            };
+            ui_elements::busy_banner(ui, &banner_text);
+            ui.add_space(4.0);
+        }
+        if let Some(pct) = self.progress_percent {
+            ui.add(
+                egui::ProgressBar::new((pct / 100.0).clamp(0.0, 1.0))
+                    .show_percentage()
+                    .animate(self.is_flashing),
+            );
         }
         if let Some(sp) = &self.stock_progress {
             ui_elements::tool_card(ui, |ui| {
@@ -852,7 +856,15 @@ impl FlashDialog {
         ui.horizontal_wrapped(|ui| {
             ui.heading(i18n::t("flash.header_devices"));
             if ui
-                .add_enabled(!is_busy, egui::Button::new(i18n::t("flash.btn_refresh")))
+                .add_enabled_ui(!is_busy, |ui| {
+                    ui_elements::pulsing_cta_button(
+                        ui,
+                        i18n::t("flash.btn_refresh"),
+                        colors::ACCENT_BLUE,
+                        self.fastboot_devices.is_empty() && !is_busy,
+                    )
+                })
+                .inner
                 .clicked()
             {
                 self.refresh_fastboot_devices();
@@ -927,30 +939,18 @@ impl FlashDialog {
         ui.separator();
 
         // 3. Mode Tabs
-        ui.horizontal_wrapped(|ui| {
-            ui.selectable_value(&mut self.tab, FlashTab::FullRom, i18n::t("flash.tab_full"));
-            ui.selectable_value(
-                &mut self.tab,
-                FlashTab::SinglePartition,
-                i18n::t("flash.tab_single"),
-            );
-            ui.selectable_value(
-                &mut self.tab,
-                FlashTab::AdbSideload,
-                i18n::t("flash.tab_sideload"),
-            );
-            ui.selectable_value(
-                &mut self.tab,
-                FlashTab::ManifestGenerator,
-                i18n::t("flash.tab_gen"),
-            );
-            ui.selectable_value(
-                &mut self.tab,
-                FlashTab::LockBootloader,
-                i18n::t("flash.tab_stock_lock"),
-            );
-            ui.selectable_value(&mut self.tab, FlashTab::Guide, i18n::t("flash.tab_guide"));
-        });
+        ui_elements::sub_tab_pills(
+            ui,
+            &mut self.tab,
+            &[
+                (FlashTab::FullRom, i18n::t("flash.tab_full")),
+                (FlashTab::SinglePartition, i18n::t("flash.tab_single")),
+                (FlashTab::AdbSideload, i18n::t("flash.tab_sideload")),
+                (FlashTab::ManifestGenerator, i18n::t("flash.tab_gen")),
+                (FlashTab::LockBootloader, i18n::t("flash.tab_stock_lock")),
+                (FlashTab::Guide, i18n::t("flash.tab_guide")),
+            ],
+        );
         ui.small(i18n::t("flash.drop_tip"));
 
         ui.separator();
@@ -991,7 +991,7 @@ impl FlashDialog {
                 ui.small(i18n::tf("flash.journal_log", &[("path", &p)]));
             }
             if ui.small_button(i18n::t("flash.open_logs_folder")).clicked() {
-                open_folder_in_os(&reports_dir());
+                ui_elements::open_folder_in_os(&reports_dir());
             }
         });
 
@@ -1047,7 +1047,15 @@ impl FlashDialog {
             let can_verify =
                 self.selected_fastboot.is_some() && !self.manifest_path.trim().is_empty();
             if ui
-                .add_enabled(can_verify, egui::Button::new(i18n::t("flash.full_verify_btn")))
+                .add_enabled_ui(can_verify, |ui| {
+                    ui_elements::pulsing_cta_button(
+                        ui,
+                        i18n::t("flash.full_verify_btn"),
+                        colors::ACCENT_BLUE,
+                        can_verify && self.plan_verified.is_none(),
+                    )
+                })
+                .inner
                 .clicked()
             {
                 self.start_prepare_plan();
@@ -1089,10 +1097,11 @@ impl FlashDialog {
             let can_flash = self.confirm_full_flash && self.selected_fastboot.is_some();
             if ui
                 .add_enabled_ui(can_flash, |ui| {
-                    ui_elements::accent_button(
+                    ui_elements::pulsing_cta_button(
                         ui,
                         i18n::t("flash.full_start_btn"),
                         colors::ACCENT_BLUE,
+                        can_flash,
                     )
                 })
                 .inner
@@ -1191,10 +1200,15 @@ impl FlashDialog {
         ui.horizontal(|ui| {
             let path_set = !self.single_image_path.trim().is_empty();
             if ui
-                .add_enabled(
-                    path_set,
-                    egui::Button::new(i18n::t("flash.single_inspect_btn")),
-                )
+                .add_enabled_ui(path_set, |ui| {
+                    ui_elements::pulsing_cta_button(
+                        ui,
+                        i18n::t("flash.single_inspect_btn"),
+                        colors::ACCENT_BLUE,
+                        path_set && self.single_inspection.is_none(),
+                    )
+                })
+                .inner
                 .clicked()
             {
                 self.start_inspect_single();
@@ -1252,10 +1266,11 @@ impl FlashDialog {
         ui.horizontal(|ui| {
             if ui
                 .add_enabled_ui(can_flash, |ui| {
-                    ui_elements::accent_button(
+                    ui_elements::pulsing_cta_button(
                         ui,
                         &i18n::tf("flash.single_flash_btn", &[("part", &self.partition)]),
                         colors::ACCENT_BLUE,
+                        can_flash,
                     )
                 })
                 .inner
@@ -1315,7 +1330,15 @@ impl FlashDialog {
         ui.horizontal(|ui| {
             let path_set = !self.sideload_zip_path.trim().is_empty();
             if ui
-                .add_enabled(path_set, egui::Button::new(i18n::t("flash.sl_inspect_btn")))
+                .add_enabled_ui(path_set, |ui| {
+                    ui_elements::pulsing_cta_button(
+                        ui,
+                        i18n::t("flash.sl_inspect_btn"),
+                        colors::ACCENT_BLUE,
+                        path_set && self.sideload_inspection.is_none(),
+                    )
+                })
+                .inner
                 .clicked()
             {
                 self.start_inspect_sideload();
@@ -1370,10 +1393,11 @@ impl FlashDialog {
 
         if ui
             .add_enabled_ui(can_sideload, |ui| {
-                ui_elements::accent_button(
+                ui_elements::pulsing_cta_button(
                     ui,
                     i18n::t("flash.sl_start_btn"),
                     colors::ACCENT_GREEN,
+                    can_sideload,
                 )
             })
             .inner
@@ -1445,7 +1469,15 @@ impl FlashDialog {
             && !self.gen_build.trim().is_empty();
 
         if ui
-            .add_enabled(can_generate, egui::Button::new(i18n::t("flash.gen_btn")))
+            .add_enabled_ui(can_generate, |ui| {
+                ui_elements::pulsing_cta_button(
+                    ui,
+                    i18n::t("flash.gen_btn"),
+                    colors::ACCENT_BLUE,
+                    can_generate && self.gen_result.is_none(),
+                )
+            })
+            .inner
             .clicked()
         {
             self.start_generate_manifest();
@@ -1471,7 +1503,14 @@ impl FlashDialog {
                         for img in &m.images {
                             ui.label(format!("• {} ← {}", img.partition, img.file));
                         }
-                        if ui.button(i18n::t("flash.gen_switch")).clicked() {
+                        if ui_elements::pulsing_cta_button(
+                            ui,
+                            i18n::t("flash.gen_switch"),
+                            colors::ACCENT_GREEN,
+                            true,
+                        )
+                        .clicked()
+                        {
                             self.tab = FlashTab::FullRom;
                         }
                     });
@@ -1519,7 +1558,7 @@ impl FlashDialog {
                 if ui
                     .add(
                         egui::TextEdit::singleline(&mut self.lock_rom_folder)
-                            .desired_width(ui.available_width() - 90.0),
+                            .desired_width(ui.available_width() - 105.0),
                     )
                     .changed()
                 {
@@ -1527,7 +1566,14 @@ impl FlashDialog {
                     self.confirm_stock_lock = false;
                     self.lock_confirm_text.clear();
                 }
-                if ui.button(i18n::t("common.browse")).clicked() {
+                if ui_elements::pulsing_cta_button(
+                    ui,
+                    i18n::t("common.browse"),
+                    colors::ACCENT_BLUE,
+                    self.lock_rom_folder.trim().is_empty(),
+                )
+                .clicked()
+                {
                     self.pick_path(PickTarget::StockLockFolder);
                 }
             });
@@ -1535,10 +1581,15 @@ impl FlashDialog {
             let can_inspect = !self.lock_rom_folder.trim().is_empty();
             ui.horizontal(|ui| {
                 if ui
-                    .add_enabled(
-                        can_inspect,
-                        egui::Button::new(i18n::t("flash.stock_inspect_btn")),
-                    )
+                    .add_enabled_ui(can_inspect, |ui| {
+                        ui_elements::pulsing_cta_button(
+                            ui,
+                            i18n::t("flash.stock_inspect_btn"),
+                            colors::ACCENT_BLUE,
+                            can_inspect && self.lock_stock_info.is_none(),
+                        )
+                    })
+                    .inner
                     .clicked()
                 {
                     self.start_inspect_stock_lock();
@@ -1735,7 +1786,12 @@ impl FlashDialog {
                         };
                         if ui
                             .add_enabled_ui(can_run, |ui| {
-                                ui_elements::accent_button(ui, button_text, btn_color)
+                                ui_elements::pulsing_cta_button(
+                                    ui,
+                                    button_text,
+                                    btn_color,
+                                    can_run,
+                                )
                             })
                             .inner
                             .clicked()
@@ -2503,22 +2559,6 @@ fn native_pick_path(target: PickTarget) -> Option<String> {
 #[cfg(not(windows))]
 fn native_pick_path(_target: PickTarget) -> Option<String> {
     None
-}
-
-fn open_folder_in_os(dir: &PathBuf) {
-    let _ = fs::create_dir_all(dir);
-    #[cfg(windows)]
-    {
-        let _ = std::process::Command::new("explorer").arg(dir).spawn();
-    }
-    #[cfg(target_os = "macos")]
-    {
-        let _ = std::process::Command::new("open").arg(dir).spawn();
-    }
-    #[cfg(all(unix, not(target_os = "macos")))]
-    {
-        let _ = std::process::Command::new("xdg-open").arg(dir).spawn();
-    }
 }
 
 fn format_bytes_human(bytes: u64) -> String {

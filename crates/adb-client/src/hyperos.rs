@@ -15,7 +15,7 @@ use serde_json::{Value, json};
 
 const EMBEDDED_METADATA_TEMPLATE: &str = include_str!("../../../themes/metadata_template.json");
 
-const THEME_DATA_ROOT: &str = "/sdcard/Android/data/com.android.thememanager/files/MIUI/theme/.data";
+pub(crate) const THEME_DATA_ROOT: &str = "/sdcard/Android/data/com.android.thememanager/files/MIUI/theme/.data";
 const THEME_DATA_CONTENT_PREFIX: &str =
     "/system/../storage/emulated/0/Android/data/com.android.thememanager/files/MIUI/theme/.data/content/theme";
 
@@ -1399,7 +1399,7 @@ pub fn resolve_adb_verified(adb_bin: Option<&str>) -> String {
     crate::flash::resolve_adb(adb_bin)
 }
 
-fn run_command_capture(program: &str, args: &[String], timeout: Duration) -> Result<(bool, String), String> {
+pub(crate) fn run_command_capture(program: &str, args: &[String], timeout: Duration) -> Result<(bool, String), String> {
     let mut cmd = Command::new(program);
     cmd.args(args)
         .stdin(Stdio::null())
@@ -1462,7 +1462,7 @@ fn run_command_capture(program: &str, args: &[String], timeout: Duration) -> Res
     Ok((status.success(), combined))
 }
 
-fn run_adb_shell(adb: &str, serial: &str, script: &str, timeout: Duration) -> Result<(bool, String), String> {
+pub(crate) fn run_adb_shell(adb: &str, serial: &str, script: &str, timeout: Duration) -> Result<(bool, String), String> {
     let args = vec![
         "-s".to_string(),
         serial.to_string(),
@@ -1472,7 +1472,7 @@ fn run_adb_shell(adb: &str, serial: &str, script: &str, timeout: Duration) -> Re
     run_command_capture(adb, &args, timeout)
 }
 
-fn run_adb_push(adb: &str, serial: &str, local: &Path, remote: &str, timeout: Duration) -> Result<(bool, String), String> {
+pub(crate) fn run_adb_push(adb: &str, serial: &str, local: &Path, remote: &str, timeout: Duration) -> Result<(bool, String), String> {
     let local_str = local
         .to_str()
         .ok_or_else(|| format!("Đường dẫn không hợp lệ: {}", local.display()))?
@@ -1509,7 +1509,7 @@ pub fn is_valid_locale_tag(tag: &str) -> bool {
     !tag.is_empty() && tag.len() <= 120 && re.is_match(tag)
 }
 
-fn safe_serial(serial: &str) -> String {
+pub(crate) fn safe_serial(serial: &str) -> String {
     serial
         .chars()
         .map(|c| if c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-') { c } else { '_' })
@@ -1536,7 +1536,7 @@ fn save_backup(backups_dir: &Path, serial: &str, data: &DeviceBackup) {
     }
 }
 
-fn now_timestamp_label() -> String {
+pub(crate) fn now_timestamp_label() -> String {
     let secs = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
@@ -1544,7 +1544,7 @@ fn now_timestamp_label() -> String {
     secs.to_string()
 }
 
-fn get_setting(adb: &str, serial: &str, namespace: &str, key: &str) -> String {
+pub(crate) fn get_setting(adb: &str, serial: &str, namespace: &str, key: &str) -> String {
     let cmd = format!("settings get {namespace} {key}");
     match run_adb_shell(adb, serial, &cmd, Duration::from_secs(10)) {
         Ok((true, out)) => {
@@ -1841,6 +1841,32 @@ pub fn get_locale_status(adb_bin: Option<&str>, serial: &str, backups_dir: &Path
     }
 }
 
+fn sync_per_app_locales(adb: &str, serial: &str, enable_vi: bool, on_log: &mut impl FnMut(String)) {
+    let script = if enable_vi {
+        r#"pkgs="$(pm list packages -3 --user 0 2>/dev/null | sed 's/^package://') com.android.vending com.google.android.gm com.google.android.youtube com.google.android.chrome com.google.android.apps.maps com.google.android.apps.photos"; ok=0; for p in $pkgs; do cmd locale set-app-locales "$p" --locales vi-VN >/dev/null 2>&1 && ok=$((ok+1)); done; echo LOCALE_APPS_OK=$ok"#
+    } else {
+        r#"pkgs="$(pm list packages -3 --user 0 2>/dev/null | sed 's/^package://') com.android.vending com.google.android.gm com.google.android.youtube com.google.android.chrome com.google.android.apps.maps com.google.android.apps.photos"; for p in $pkgs; do cmd locale set-app-locales "$p" >/dev/null 2>&1 || true; done; echo LOCALE_APPS_CLEARED"#
+    };
+    if let Ok((_, out)) = run_adb_shell(adb, serial, script, Duration::from_secs(45)) {
+        if enable_vi {
+            if let Some(cnt_str) = out
+                .lines()
+                .find_map(|l| l.trim().strip_prefix("LOCALE_APPS_OK="))
+            {
+                if let Ok(cnt) = cnt_str.trim().parse::<usize>() {
+                    if cnt > 0 {
+                        on_log(format!(
+                            "[Locale] Đã khóa Tiếng Việt bền vững (per-app) cho {cnt} ứng dụng qua cmd locale."
+                        ));
+                    }
+                }
+            }
+        } else if out.contains("LOCALE_APPS_CLEARED") {
+            on_log("[Locale] Đã xóa ghi đè ngôn ngữ riêng của ứng dụng (per-app).".into());
+        }
+    }
+}
+
 pub fn set_system_locale(
     adb_bin: Option<&str>,
     serial: &str,
@@ -1874,8 +1900,10 @@ pub fn set_system_locale(
     )?;
     let after = get_setting(&adb, serial, "system", "system_locales");
     if ok && after == tag {
+        let enable_vi = tag.to_ascii_lowercase().starts_with("vi");
+        sync_per_app_locales(&adb, serial, enable_vi, &mut on_log);
         let msg = format!(
-            "Đã đặt system_locales = '{after}'. Khởi động lại máy hoặc nạp Theme MTZ để Việt hóa sâu hơn."
+            "Đã đặt system_locales = '{after}'. Nạp Theme MTZ rồi bấm Khóa chống hoàn tác DRM để giữ Tiếng Việt bền vững."
         );
         on_log(msg.clone());
         Ok(msg)
@@ -1911,6 +1939,7 @@ pub fn restore_locale_backup(
     };
     let (ok, out) = run_adb_shell(&adb, serial, &cmd, Duration::from_secs(15))?;
     if ok {
+        sync_per_app_locales(&adb, serial, false, &mut on_log);
         let msg = format!(
             "Đã khôi phục system_locales về '{}'.",
             if orig.is_empty() { "(mặc định ROM)" } else { &orig }
@@ -1928,7 +1957,7 @@ pub fn restore_locale_backup(
 // Feature 2B: MTZ Packager & Deployer (exact defpackage.d6 + defpackage.lstate)
 // ---------------------------------------------------------------------------
 
-struct TempDirGuard(PathBuf);
+pub(crate) struct TempDirGuard(pub(crate) PathBuf);
 
 impl Drop for TempDirGuard {
     fn drop(&mut self) {
@@ -1936,7 +1965,7 @@ impl Drop for TempDirGuard {
     }
 }
 
-fn new_temp_dir(prefix: &str) -> Result<PathBuf, String> {
+pub(crate) fn new_temp_dir(prefix: &str) -> Result<PathBuf, String> {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_nanos())
@@ -1969,6 +1998,7 @@ fn res_ref(local_id: &str, resource_code: &str) -> Value {
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn apply_common_meta(
     obj: &mut Value,
     platform: i64,
@@ -1979,6 +2009,7 @@ fn apply_common_meta(
     local_id: &str,
     file_hash: &str,
     size: u64,
+    is_third_parties: bool,
 ) {
     if let Some(map) = obj.as_object_mut() {
         map.insert("localId".into(), json!(local_id));
@@ -1989,6 +2020,7 @@ fn apply_common_meta(
         map.insert("designers".into(), localized_str(designer));
         map.insert("titles".into(), localized_str(title));
         map.insert("descriptions".into(), localized_str(description));
+        map.insert("isThirdParties".into(), json!(is_third_parties));
     }
 }
 
@@ -2008,7 +2040,7 @@ fn is_valid_segment(s: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
 }
 
-fn validate_archive_entries(mtz_path: &Path) -> Result<(), String> {
+pub(crate) fn validate_archive_entries(mtz_path: &Path) -> Result<(), String> {
     let mtz_str = mtz_path
         .to_str()
         .ok_or("Đường dẫn MTZ không phải Unicode hợp lệ.")?
@@ -2052,7 +2084,7 @@ fn validate_archive_entries(mtz_path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn extract_archive(mtz_path: &Path, dest_dir: &Path) -> Result<(), String> {
+pub(crate) fn extract_archive(mtz_path: &Path, dest_dir: &Path) -> Result<(), String> {
     let mtz_str = mtz_path
         .to_str()
         .ok_or("Đường dẫn MTZ không phải Unicode hợp lệ.")?
@@ -2080,7 +2112,7 @@ fn extract_archive(mtz_path: &Path, dest_dir: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn unescape_xml(s: &str) -> String {
+pub(crate) fn unescape_xml(s: &str) -> String {
     s.replace("&amp;", "&")
         .replace("&lt;", "<")
         .replace("&gt;", ">")
@@ -2088,7 +2120,7 @@ fn unescape_xml(s: &str) -> String {
         .replace("&apos;", "'")
 }
 
-fn extract_xml_tag(xml: &str, tag: &str) -> Option<String> {
+pub(crate) fn extract_xml_tag(xml: &str, tag: &str) -> Option<String> {
     let pat = format!(r"(?s)<{tag}\b[^>]*>(.*?)</{tag}>");
     let re = Regex::new(&pat).ok()?;
     let cap = re.captures(xml)?;
@@ -2206,20 +2238,28 @@ pub fn prepare_mtz_stage(
     }
     let desc_str = String::from_utf8_lossy(&desc_bytes);
 
+    let mtz_stem = mtz_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or_default();
+    let theme_cfg = crate::hyperos_vi::load_theme_config(
+        template_path_opt.and_then(|p| p.parent()),
+        mtz_stem,
+    );
+
     let title_raw = extract_xml_tag(&desc_str, "title").unwrap_or_default();
     let title = {
         let t = truncate_chars(title_raw.trim(), 200);
-        if t.is_empty() { "Chủ đề MTZ".to_string() } else { t }
+        if !t.is_empty() {
+            t
+        } else if !theme_cfg.title.is_empty() {
+            truncate_chars(&theme_cfg.title, 200)
+        } else {
+            "Chủ đề MTZ".to_string()
+        }
     };
-    let author = truncate_chars(
-        extract_xml_tag(&desc_str, "author").unwrap_or_default().trim(),
-        120,
-    );
-    let designer_raw = truncate_chars(
-        extract_xml_tag(&desc_str, "designer").unwrap_or_default().trim(),
-        120,
-    );
-    let designer = if designer_raw.is_empty() { author.clone() } else { designer_raw };
+    let author = truncate_chars(theme_cfg.author.trim(), 120);
+    let designer = truncate_chars(theme_cfg.designer.trim(), 120);
     let description = truncate_chars(
         extract_xml_tag(&desc_str, "description").unwrap_or_default().trim(),
         4000,
@@ -2227,7 +2267,7 @@ pub fn prepare_mtz_stage(
     let ui_version = extract_xml_tag(&desc_str, "uiVersion")
         .and_then(|s| s.trim().parse::<i64>().ok())
         .filter(|&v| (1..1000).contains(&v))
-        .unwrap_or(17);
+        .unwrap_or(theme_cfg.ui_version);
 
     // Collect root-level modules & preview/ files
     let mut modules: Vec<(String, PathBuf)> = Vec::new();
@@ -2307,6 +2347,7 @@ pub fn prepare_mtz_stage(
         &theme_uuid,
         &mtz_sha1,
         mtz_size,
+        theme_cfg.is_third_parties,
     );
     if let Some(m) = theme_meta.as_object_mut() {
         m.insert(
@@ -2351,6 +2392,7 @@ pub fn prepare_mtz_stage(
             &mod_uuid,
             &mod_sha1,
             mod_bytes.len() as u64,
+            theme_cfg.is_third_parties,
         );
         if let Some(m) = mod_meta.as_object_mut() {
             m.insert("parentResources".into(), json!([res_ref(&theme_uuid, "theme")]));
@@ -2500,28 +2542,29 @@ pub fn open_theme_apply_screen(
     mut on_log: impl FnMut(String),
 ) -> bool {
     let adb = resolve_adb_verified(adb_bin);
-    let cmd = format!(
-        "am start -S --user 0 -a android.intent.action.VIEW \
-         -n com.android.thememanager/.module.detail.view.ThemeDetailActivity \
-         -d 'ViewLocalResource://view.local.resource#{theme_uuid}' \
-         --es REQUEST_RESOURCE_CODE theme --ei REQUEST_SOURCE_TYPE 1"
-    );
-    match run_adb_shell(&adb, serial, &cmd, Duration::from_secs(20)) {
-        Ok((ok, out)) if ok && !out.contains("Error") && !out.contains("Exception") => {
-            on_log("Đã mở trang chi tiết Theme trên điện thoại — hãy bấm nút [Áp dụng] thủ công trên màn hình.".into());
-            true
-        }
-        Ok((_, out)) => {
-            on_log(format!(
-                "Cảnh báo: không mở thẳng được ThemeDetailActivity ({out}). Hãy mở ứng dụng Chủ đề (Themes) trên điện thoại để áp dụng."
-            ));
-            false
-        }
-        Err(e) => {
-            on_log(format!("Cảnh báo khi mở ThemeDetailActivity: {e}"));
-            false
+    if get_theme_guard_status(Some(&adb), serial).frozen {
+        let _ = unlock_theme_manager(Some(&adb), serial, |m| on_log(m));
+        on_log("Đã tự mở lại app Chủ đề trước khi mở màn hình Áp dụng.".into());
+    }
+    for activity in [
+        "com.android.thememanager/.activity.ThemeDetailActivity",
+        "com.android.thememanager/.module.detail.view.ThemeDetailActivity",
+    ] {
+        let cmd = format!(
+            "am start -S --user 0 -a android.intent.action.VIEW \
+             -n {activity} \
+             -d 'ViewLocalResource://view.local.resource#{theme_uuid}' \
+             --es REQUEST_RESOURCE_CODE theme --ei REQUEST_SOURCE_TYPE 1"
+        );
+        if let Ok((ok, out)) = run_adb_shell(&adb, serial, &cmd, Duration::from_secs(20)) {
+            if ok && !out.contains("Error") && !out.contains("Exception") {
+                on_log("Đã mở trang chi tiết Theme trên điện thoại — hãy bấm nút [Áp dụng] trên màn hình rồi quay lại đây Khóa DRM.".into());
+                return true;
+            }
         }
     }
+    on_log("Cảnh báo: không mở thẳng được trang chi tiết Theme. Hãy mở app Chủ đề (Themes) trên điện thoại -> Chủ đề của tôi -> chọn MTZVN để bấm [Áp dụng].".into());
+    false
 }
 
 pub fn deploy_mtz_via_adb(
@@ -2645,6 +2688,194 @@ pub fn deploy_mtz_via_adb(
         self::open_theme_apply_screen(Some(&adb), serial, uid, |m| on_log(m));
     }
     Ok(staged)
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct ThemeGuardStatus {
+    pub locked: bool,
+    pub frozen: bool,
+    pub state_label: String,
+    pub active_overlay_count: usize,
+}
+
+pub fn parse_package_uid(raw: &str) -> Option<String> {
+    let re = Regex::new(r"(?:uid:|appId=)(\d+)").ok()?;
+    re.captures(raw)
+        .and_then(|c| c.get(1))
+        .map(|m| m.as_str().to_string())
+}
+
+pub fn get_theme_guard_status(adb_bin: Option<&str>, serial: &str) -> ThemeGuardStatus {
+    let adb = resolve_adb_verified(adb_bin);
+    let script = concat!(
+        "echo DIS=$(pm list packages -d --user 0 com.android.thememanager 2>/dev/null); ",
+        "dumpsys package com.android.thememanager 2>/dev/null | grep -E 'enabled=|suspended=' | head -n 1; ",
+        "echo OPS=$(cmd appops get com.android.thememanager RUN_ANY_IN_BACKGROUND 2>/dev/null); ",
+        "echo OVL=$(find /data/system/theme -maxdepth 2 -type f ! -path '*/.runtime/*' ! -path '*/rights/*' 2>/dev/null | wc -l)"
+    );
+    let out = run_adb_shell(&adb, serial, script, Duration::from_secs(15))
+        .ok()
+        .map(|(_, o)| o)
+        .unwrap_or_default();
+
+    let mut frozen = false;
+    let mut bg_blocked = false;
+    let mut overlay_count = 0usize;
+
+    for line in out.lines() {
+        let trimmed = line.trim();
+        let low = trimmed.to_ascii_lowercase();
+        if let Some(rest) = trimmed.strip_prefix("DIS=") {
+            if rest.contains("com.android.thememanager") {
+                frozen = true;
+            }
+        } else if low.contains("suspended=true")
+            || low.contains("enabled=2")
+            || low.contains("enabled=3")
+            || low.contains("enabled=4")
+        {
+            frozen = true;
+        } else if let Some(rest) = trimmed.strip_prefix("OPS=") {
+            let rlow = rest.to_ascii_lowercase();
+            if rlow.contains("ignore") || rlow.contains("deny") {
+                bg_blocked = true;
+            }
+        } else if let Some(rest) = trimmed.strip_prefix("OVL=") {
+            if let Ok(n) = rest.trim().parse::<usize>() {
+                overlay_count = n;
+            }
+        }
+    }
+
+    let locked = frozen || bg_blocked;
+    let state_label = if frozen {
+        "Đã khóa cứng (đóng băng Chủ đề)".to_string()
+    } else if bg_blocked {
+        "Đã chặn chạy nền & mạng DRM".to_string()
+    } else {
+        "Đang mở (dễ tự hoàn tác sau 30–60 phút)".to_string()
+    };
+
+    ThemeGuardStatus {
+        locked,
+        frozen,
+        state_label,
+        active_overlay_count: overlay_count,
+    }
+}
+
+pub fn lock_theme_anti_revert(
+    adb_bin: Option<&str>,
+    serial: &str,
+    freeze_manager: bool,
+    mut on_log: impl FnMut(String),
+) -> Result<String, String> {
+    let adb = resolve_adb_verified(adb_bin);
+    let pre = get_theme_guard_status(Some(&adb), serial);
+    if pre.active_overlay_count == 0 {
+        let msg = "Chưa phát hiện tệp overlay Việt hóa nào trong /data/system/theme/ (0 tệp). Hãy bấm nút [Áp dụng] Theme trên màn hình điện thoại trước, đợi áp dụng xong 100% rồi mới bấm Khóa chống quay về Tiếng Anh!".to_string();
+        on_log(msg.clone());
+        return Err(msg);
+    }
+    let uid_raw = run_adb_shell(
+        &adb,
+        serial,
+        "cmd package list packages -U com.android.thememanager 2>/dev/null | grep '^package:com\\.android\\.thememanager '; dumpsys package com.android.thememanager 2>/dev/null | grep -m1 appId=",
+        Duration::from_secs(10),
+    )
+    .ok()
+    .map(|(_, o)| o)
+    .unwrap_or_default();
+    let uid = parse_package_uid(&uid_raw);
+
+    let mut cmds = vec![
+        "cmd jobscheduler cancel com.android.thememanager >/dev/null 2>&1 || true".to_string(),
+        "cmd jobscheduler cancel com.miui.themestore >/dev/null 2>&1 || true".to_string(),
+        "cmd appops set com.android.thememanager RUN_IN_BACKGROUND ignore >/dev/null 2>&1 || true".to_string(),
+        "cmd appops set com.android.thememanager RUN_ANY_IN_BACKGROUND ignore >/dev/null 2>&1 || true".to_string(),
+        "cmd appops set com.android.thememanager WAKE_LOCK ignore >/dev/null 2>&1 || true".to_string(),
+        "cmd appops set com.miui.themestore RUN_IN_BACKGROUND ignore >/dev/null 2>&1 || true".to_string(),
+        "cmd appops set com.miui.themestore RUN_ANY_IN_BACKGROUND ignore >/dev/null 2>&1 || true".to_string(),
+        "cmd appops set com.miui.themestore WAKE_LOCK ignore >/dev/null 2>&1 || true".to_string(),
+    ];
+    if let Some(ref u) = uid {
+        cmds.push(format!(
+            "cmd netpolicy add restrict-background-blacklist {u} >/dev/null 2>&1 || true"
+        ));
+    }
+    cmds.push("am force-stop com.android.thememanager >/dev/null 2>&1 || true".to_string());
+    cmds.push("am force-stop com.miui.themestore >/dev/null 2>&1 || true".to_string());
+    if freeze_manager {
+        cmds.push(
+            "pm disable-user --user 0 com.android.thememanager >/dev/null 2>&1 || pm suspend --user 0 com.android.thememanager >/dev/null 2>&1 || true".to_string(),
+        );
+        cmds.push(
+            "pm disable-user --user 0 com.miui.themestore >/dev/null 2>&1 || pm suspend --user 0 com.miui.themestore >/dev/null 2>&1 || true".to_string(),
+        );
+    }
+
+    let _ = run_adb_shell(&adb, serial, &cmds.join("; "), Duration::from_secs(20))?;
+    on_log("[Theme Guard] Đã hủy job nền, chặn AppOps/mạng chạy ngầm và dừng kiểm tra DRM của Chủ đề.".into());
+    if let Some(u) = uid {
+        on_log(format!("[Theme Guard] Đã chặn mạng nền (restrict-background-blacklist) cho UID {u}."));
+    }
+
+    let st = get_theme_guard_status(Some(&adb), serial);
+    if st.locked {
+        let msg = format!(
+            "Đã bật khóa chống quay về Tiếng Anh: {} (overlay đang giữ: {} tệp).",
+            st.state_label, st.active_overlay_count
+        );
+        on_log(msg.clone());
+        Ok(msg)
+    } else {
+        let err = "Không thể khóa/chặn chạy nền app Chủ đề (ROM từ chối cả disable-user, suspend và appops).".to_string();
+        on_log(err.clone());
+        Err(err)
+    }
+}
+
+pub fn unlock_theme_manager(
+    adb_bin: Option<&str>,
+    serial: &str,
+    mut on_log: impl FnMut(String),
+) -> Result<String, String> {
+    let adb = resolve_adb_verified(adb_bin);
+    let uid_raw = run_adb_shell(
+        &adb,
+        serial,
+        "cmd package list packages -U com.android.thememanager 2>/dev/null | grep '^package:com\\.android\\.thememanager '; dumpsys package com.android.thememanager 2>/dev/null | grep -m1 appId=",
+        Duration::from_secs(10),
+    )
+    .ok()
+    .map(|(_, o)| o)
+    .unwrap_or_default();
+    let uid = parse_package_uid(&uid_raw);
+
+    let mut cmds = vec![
+        "pm unhide --user 0 com.android.thememanager >/dev/null 2>&1 || true".to_string(),
+        "pm unsuspend --user 0 com.android.thememanager >/dev/null 2>&1 || true".to_string(),
+        "pm enable --user 0 com.android.thememanager >/dev/null 2>&1 || true".to_string(),
+        "pm unhide --user 0 com.miui.themestore >/dev/null 2>&1 || true".to_string(),
+        "pm unsuspend --user 0 com.miui.themestore >/dev/null 2>&1 || true".to_string(),
+        "pm enable --user 0 com.miui.themestore >/dev/null 2>&1 || true".to_string(),
+        "cmd appops set com.android.thememanager RUN_IN_BACKGROUND default >/dev/null 2>&1 || true".to_string(),
+        "cmd appops set com.android.thememanager RUN_ANY_IN_BACKGROUND default >/dev/null 2>&1 || true".to_string(),
+        "cmd appops set com.android.thememanager WAKE_LOCK default >/dev/null 2>&1 || true".to_string(),
+        "cmd appops set com.miui.themestore RUN_IN_BACKGROUND default >/dev/null 2>&1 || true".to_string(),
+        "cmd appops set com.miui.themestore RUN_ANY_IN_BACKGROUND default >/dev/null 2>&1 || true".to_string(),
+        "cmd appops set com.miui.themestore WAKE_LOCK default >/dev/null 2>&1 || true".to_string(),
+    ];
+    if let Some(u) = uid {
+        cmds.push(format!(
+            "cmd netpolicy remove restrict-background-blacklist {u} >/dev/null 2>&1 || true"
+        ));
+    }
+
+    let _ = run_adb_shell(&adb, serial, &cmds.join("; "), Duration::from_secs(20))?;
+    let msg = "Đã mở lại app Chủ đề (com.android.thememanager). Bạn có thể đổi theme/hình nền bình thường.".to_string();
+    on_log(msg.clone());
+    Ok(msg)
 }
 
 // ---------------------------------------------------------------------------
@@ -3303,10 +3534,14 @@ mod tests {
         let stage_dir = new_temp_dir("rust_mtz_test").expect("temp dir");
         let _guard = TempDirGuard(stage_dir.clone());
 
+        let expected_sha1 = sha1_file(&mtz_path).expect("sha1");
+        let expected_uuid =
+            java_name_uuid_from_bytes(format!("mtztool-theme:{expected_sha1}").as_bytes());
+
         let staged = prepare_mtz_stage(&mtz_path, None, &stage_dir, |_| {})
             .expect("prepare_mtz_stage should succeed");
 
-        assert_eq!(staged.theme_uuid, "090655d1-680c-3fed-82bd-1ee4be4c4e14");
+        assert_eq!(staged.theme_uuid, expected_uuid);
         assert_eq!(staged.module_count, 14);
         assert_eq!(staged.file_count, 36);
 
@@ -3328,11 +3563,38 @@ mod tests {
         assert_eq!(fs::metadata(&root_mrc).unwrap().len(), 0);
         assert!(cover.is_file());
 
-        let parsed: Value = serde_json::from_str(&fs::read_to_string(&root_mrm).unwrap()).unwrap();
+        let root_mrm_text = fs::read_to_string(&root_mrm).unwrap();
+        let parsed: Value = serde_json::from_str(&root_mrm_text).unwrap();
+        assert_eq!(parsed["authors"]["fallback"], "");
+        assert_eq!(parsed["authors"]["zh_CN"], "");
+        assert_eq!(parsed["designers"]["fallback"], "");
+        assert_eq!(parsed["designers"]["zh_CN"], "");
+        assert_eq!(parsed["isThirdParties"], false);
+
+        for (rel, _) in &staged.staged_rel_files {
+            if rel.starts_with("meta/") && rel.ends_with(".mrm") {
+                let txt = fs::read_to_string(stage_dir.join(rel)).unwrap();
+                assert!(!txt.contains("Truong"), "Author name leaked in {rel}");
+            }
+        }
+
         let subs = parsed["subResources"].as_array().unwrap();
         assert_eq!(subs.len(), 14);
         assert!(subs.iter().any(|s| s["resourceCode"] == "statusbar"));
         assert!(subs.iter().any(|s| s["resourceCode"] == "icons"));
+    }
+
+    #[test]
+    fn parses_package_uid_formats() {
+        assert_eq!(
+            parse_package_uid("package:com.android.thememanager uid:6101\n"),
+            Some("6101".to_string())
+        );
+        assert_eq!(
+            parse_package_uid("    appId=6101\n"),
+            Some("6101".to_string())
+        );
+        assert_eq!(parse_package_uid("no uid here"), None);
     }
 
     #[test]

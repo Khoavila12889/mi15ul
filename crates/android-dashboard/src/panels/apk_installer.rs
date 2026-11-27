@@ -105,6 +105,10 @@ impl ApkInstallerDialog {
         self.is_installing || self.pending_pickers > 0 || self.checking_readiness
     }
 
+    pub fn queue_len(&self) -> usize {
+        self.queue.len()
+    }
+
     fn adb_override(&self) -> Option<String> {
         let s = self.adb_bin.trim();
         if s.is_empty() {
@@ -393,8 +397,13 @@ impl ApkInstallerDialog {
             ui.add_space(4.0);
             ui.add_enabled_ui(!self.is_installing, |ui| {
                 ui.horizontal_wrapped(|ui| {
-                    if ui_elements::accent_button(ui, "+ Chọn file APK…", colors::ACCENT_BLUE)
-                        .clicked()
+                    if ui_elements::pulsing_cta_button(
+                        ui,
+                        "+ Chọn file APK…",
+                        colors::ACCENT_BLUE,
+                        !self.is_installing && self.queue.is_empty(),
+                    )
+                    .clicked()
                     {
                         self.pick_files();
                     }
@@ -569,6 +578,11 @@ impl ApkInstallerDialog {
             .filter(|e| matches!(e.status, ApkItemStatus::Queued | ApkItemStatus::Failed(_)))
             .count();
 
+        if self.is_installing {
+            ui_elements::busy_banner(ui, &self.status);
+            ui.add_space(6.0);
+        }
+
         ui.horizontal_wrapped(|ui| {
             let can_install =
                 !self.is_installing && self.selected_serial.is_some() && pending_count > 0;
@@ -584,7 +598,12 @@ impl ApkInstallerDialog {
 
             if ui
                 .add_enabled_ui(can_install, |ui| {
-                    ui_elements::accent_button(ui, &btn_label, colors::ACCENT_GREEN)
+                    ui_elements::pulsing_cta_button(
+                        ui,
+                        &btn_label,
+                        colors::ACCENT_GREEN,
+                        can_install,
+                    )
                 })
                 .inner
                 .clicked()
